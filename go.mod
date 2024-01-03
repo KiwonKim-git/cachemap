@@ -1,5 +1,5 @@
-module git.i.mercedes-benz.com/KIWOKIM/cachemap
+module github.com/KiwonKim-git/cachemap
 
-go 1.19
+go 1.21
 
 require github.com/robfig/cron v1.2.0
