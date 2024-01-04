@@ -1,4 +1,4 @@
-package cachemap
+package cacheMap
 
 import (
 	"log"
