@@ -24,6 +24,7 @@ func CreateCacheMap(config *schema.CacheMapConf) *CacheMap {
 	}
 
 	if config != nil {
+		c.cacheConfig.Verbose = config.Verbose
 		c.cacheConfig.Name = config.Name
 		c.cacheConfig.RandomizedDuration = config.RandomizedDuration
 		if c.cacheConfig.RandomizedDuration && config.CacheDuration < (60*time.Second) {
@@ -32,11 +33,14 @@ func CreateCacheMap(config *schema.CacheMapConf) *CacheMap {
 			c.cacheConfig.CacheDuration = config.CacheDuration
 		}
 		c.cacheConfig.CronExprForScheduler = config.CronExprForScheduler
+		c.cacheConfig.RedisConf = nil // do not use Redis config for sync.Map cache
 	} else {
+		c.cacheConfig.Verbose = false
 		c.cacheConfig.Name = "cacheMap"
 		c.cacheConfig.RandomizedDuration = false
 		c.cacheConfig.CacheDuration = 1 * time.Hour        //1hour
 		c.cacheConfig.CronExprForScheduler = "0 0 * * * *" //every hour
+		c.cacheConfig.RedisConf = nil
 	}
 
 	c.scheduler.job = CacheJob{
