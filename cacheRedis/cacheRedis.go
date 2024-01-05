@@ -100,13 +100,16 @@ func (c *CacheRedis) Load(ctx context.Context, key string) (value interface{}, r
 	bytes, err := c.cache.Get(ctx, key).Bytes()
 
 	if err != nil {
-		log.Printf("CacheRedis ERROR - [%s] has error while it gets the value of the key [%s] from Redis server, error: [%v]", c.cacheConfig.Name, key, err)
-		result = schema.ERROR
-	} else if err == redis.Nil {
-		if c.cacheConfig.Verbose {
-			log.Printf("CacheRedis NOT FOUND - [%s] does not have the key [%s]", c.cacheConfig.Name, key)
+		if err == redis.Nil {
+			if c.cacheConfig.Verbose {
+				log.Printf("CacheRedis NOT FOUND - [%s] does not have the key [%s]", c.cacheConfig.Name, key)
+			}
+			result = schema.NOT_FOUND
+			err = nil // handle this case as not an error
+		} else {
+			log.Printf("CacheRedis ERROR - [%s] has error while it gets the value of the key [%s] from Redis server, error: [%v]", c.cacheConfig.Name, key, err)
+			result = schema.ERROR
 		}
-		result = schema.NOT_FOUND
 	} else {
 		e := schema.ElementForCacheMap{}
 		err = json.Unmarshal(bytes, &e)
