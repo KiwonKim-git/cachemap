@@ -50,7 +50,7 @@ func CreateCacheRedis(ctx context.Context, config *schema.CacheMapConf) *CacheRe
 }
 
 // Store any element into Redis server.
-// The KEY should be string and the VALUE will be marshaled into json format before storing.
+// The KEY should be string and the VALUE should be possible to be marshaled into json format before storing.
 // If you want to set specific experation time, you need to set expireAt.
 // If not, you can just set expireAt as nil and the duration in cache config will be used.
 func (c *CacheRedis) Store(ctx context.Context, key string, value interface{}, expireAt *time.Time) error {

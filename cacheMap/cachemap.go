@@ -58,9 +58,9 @@ func CreateCacheMap(config *schema.CacheMapConf) *CacheMap {
 	return c
 }
 
-// Store any element into cachemap.
+// Store any element into sync.Map in golang.
 // If you want to set specific experation time, you need to set expireAt.
-// If not, but want to use the duration of cachemap, you can just set expireAt as nil
+// If not, you can just set expireAt as nil and the duration in cache config will be used.
 func (c *CacheMap) Store(key interface{}, value interface{}, expireAt *time.Time) {
 
 	e := schema.ElementForCacheMap{}
