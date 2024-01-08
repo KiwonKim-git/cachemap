@@ -44,7 +44,7 @@ func (j *CacheJob) removeExpiredEntry(key, value interface{}) bool {
 	j.total++
 	// log.Printf("CacheScheduler.go# [%s] existing entries - key: [%v]", j.name, key)
 
-	element, ok := value.(schema.ElementForCacheMap)
+	element, ok := value.(schema.ElementForCache)
 	now := time.Now()
 
 	if ok && now.After(element.ExpireAt) {

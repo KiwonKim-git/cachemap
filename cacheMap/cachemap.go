@@ -11,15 +11,15 @@ import (
 
 type CacheMap struct {
 	cacheMap    *sync.Map
-	cacheConfig *schema.CacheMapConf
+	cacheConfig *schema.CacheConf
 	scheduler   CacheScheduler
 }
 
-func CreateCacheMap(config *schema.CacheMapConf) *CacheMap {
+func CreateCacheMap(config *schema.CacheConf) *CacheMap {
 
 	c := &CacheMap{
 		cacheMap:    &sync.Map{},
-		cacheConfig: &schema.CacheMapConf{},
+		cacheConfig: &schema.CacheConf{},
 		scheduler:   CacheScheduler{},
 	}
 
@@ -63,7 +63,7 @@ func CreateCacheMap(config *schema.CacheMapConf) *CacheMap {
 // If not, you can just set expireAt as nil and the duration in cache config will be used.
 func (c *CacheMap) Store(key interface{}, value interface{}, expireAt *time.Time) {
 
-	e := schema.ElementForCacheMap{}
+	e := schema.ElementForCache{}
 
 	randomizedTime := int64(0)
 	now := time.Now()
@@ -99,7 +99,7 @@ func (c *CacheMap) Load(key interface{}) (value interface{}, result schema.RESUL
 
 	if ok && v != nil {
 
-		e, ok := v.(schema.ElementForCacheMap)
+		e, ok := v.(schema.ElementForCache)
 		value = e.Value
 		lastUpdated = &e.LastUpdated
 

@@ -14,24 +14,30 @@ const (
 )
 
 // struct to store any element in map
-type ElementForCacheMap struct {
+type ElementForCache struct {
 	ExpireAt    time.Time
 	LastUpdated time.Time
 	Value       interface{}
 }
 
-type CacheMapConf struct {
+type CacheConf struct {
 	Verbose              bool
 	Name                 string
 	CacheDuration        time.Duration
 	RandomizedDuration   bool
 	CronExprForScheduler string // Seconds Minutes Hours Day_of_month Month Day_of_week  (e.g. "0 0 12 * * *" means 12:00:00 PM every day)
-	RedisConf            *CacheRedisConf
+	RedisConf            *RedisConf
 }
 
-type CacheRedisConf struct {
-	RedisServerAddress string
-	RedisServerPort    string
-	RedisProtocol      string
-	RedisPassword      string
+type RedisConf struct {
+	// Namespace for database. Usually application name if the appliction consist of multiple incstances (e.g., multiple pods).
+	/* Default: Name value in CacheConf */
+	Namespace string
+	// Group name to prevent key duplication in same namespcae. E.g., if you want to use session ID as a KEY in differnt data cetegories, it may cause key duplication among data categories.
+	/* Default: empty */
+	Group         string
+	ServerAddress string
+	ServerPort    string
+	Protocol      string
+	Password      string
 }

@@ -12,24 +12,24 @@ import (
 
 type CacheRedis struct {
 	cache       *redis.Client
-	cacheConfig *schema.CacheMapConf
+	cacheConfig *schema.CacheConf
 }
 
-func CreateCacheRedis(ctx context.Context, config *schema.CacheMapConf) *CacheRedis {
+func CreateCacheRedis(ctx context.Context, config *schema.CacheConf) *CacheRedis {
 
 	c := &CacheRedis{
 		cache:       nil,
-		cacheConfig: &schema.CacheMapConf{},
+		cacheConfig: &schema.CacheConf{},
 	}
 
 	if config != nil && config.RedisConf != nil {
 
 		c.cache = getRedisClient(ctx, &redis.Options{
 			ClientName: config.Name,
-			Network:    config.RedisConf.RedisProtocol,
-			Addr:       config.RedisConf.RedisServerAddress + ":" + config.RedisConf.RedisServerPort,
-			Password:   config.RedisConf.RedisPassword, // no password set
-			DB:         0,                              // use default DB
+			Network:    config.RedisConf.Protocol,
+			Addr:       config.RedisConf.ServerAddress + ":" + config.RedisConf.ServerPort,
+			Password:   config.RedisConf.Password, // no password set
+			DB:         0,                         // use default DB
 		})
 
 		c.cacheConfig.Verbose = config.Verbose
@@ -41,10 +41,13 @@ func CreateCacheRedis(ctx context.Context, config *schema.CacheMapConf) *CacheRe
 			c.cacheConfig.CacheDuration = config.CacheDuration
 		}
 		c.cacheConfig.RedisConf = config.RedisConf
+		if config.RedisConf.Namespace == "" {
+			c.cacheConfig.RedisConf.Namespace = c.cacheConfig.Name
+		}
 	}
 
 	log.Printf("CacheRedis CREATE - [%s] created CacheRedis cacheDuration: [%s], randomizedDuration: [%t], serverAddress: [%s:%s]",
-		c.cacheConfig.Name, c.cacheConfig.CacheDuration.String(), c.cacheConfig.RandomizedDuration, c.cacheConfig.RedisConf.RedisServerAddress, c.cacheConfig.RedisConf.RedisServerPort)
+		c.cacheConfig.Name, c.cacheConfig.CacheDuration.String(), c.cacheConfig.RandomizedDuration, c.cacheConfig.RedisConf.ServerAddress, c.cacheConfig.RedisConf.ServerPort)
 
 	return c
 }
@@ -55,7 +58,7 @@ func CreateCacheRedis(ctx context.Context, config *schema.CacheMapConf) *CacheRe
 // If not, you can just set expireAt as nil and the duration in cache config will be used.
 func (c *CacheRedis) Store(ctx context.Context, key string, value interface{}, expireAt *time.Time) error {
 
-	e := schema.ElementForCacheMap{}
+	e := schema.ElementForCache{}
 
 	randomizedTime := int64(0)
 	now := time.Now()
@@ -77,15 +80,21 @@ func (c *CacheRedis) Store(ctx context.Context, key string, value interface{}, e
 		return err
 	}
 
-	err = c.cache.Set(ctx, key, bytes, e.ExpireAt.Sub(now)).Err()
+	actualKey := c.cacheConfig.RedisConf.Namespace
+	if c.cacheConfig.RedisConf.Group != "" {
+		actualKey += ":" + c.cacheConfig.RedisConf.Group
+	}
+	actualKey += ":" + key
+
+	err = c.cache.Set(ctx, actualKey, bytes, e.ExpireAt.Sub(now)).Err()
 	if err != nil {
 		return err
 	}
 
 	if c.cacheConfig.Verbose {
 		loc := time.FixedZone("KST", 9*60*60)
-		log.Printf("CacheRedis STORE - [%s] stored the key [%v] at [%s] and it will be expired at [%s] with randomizedTime: [%s], element: [%s]",
-			c.cacheConfig.Name, key, e.LastUpdated.In(loc).Format(time.RFC3339), e.ExpireAt.In(loc).Format(time.RFC3339), time.Duration(randomizedTime).String(), string(bytes))
+		log.Printf("CacheRedis STORE - [%s] stored the key [%s] (actual: %s) at [%s] and it will be expired at [%s] with randomizedTime: [%s], element: [%s]",
+			c.cacheConfig.Name, key, actualKey, e.LastUpdated.In(loc).Format(time.RFC3339), e.ExpireAt.In(loc).Format(time.RFC3339), time.Duration(randomizedTime).String(), string(bytes))
 	}
 	return nil
 }
@@ -97,24 +106,30 @@ func (c *CacheRedis) Load(ctx context.Context, key string) (value interface{}, r
 	lastUpdated = nil
 	err = nil
 
-	bytes, err := c.cache.Get(ctx, key).Bytes()
+	actualKey := c.cacheConfig.RedisConf.Namespace
+	if c.cacheConfig.RedisConf.Group != "" {
+		actualKey += ":" + c.cacheConfig.RedisConf.Group
+	}
+	actualKey += ":" + key
+
+	bytes, err := c.cache.Get(ctx, actualKey).Bytes()
 
 	if err != nil {
 		if err == redis.Nil {
 			if c.cacheConfig.Verbose {
-				log.Printf("CacheRedis NOT FOUND - [%s] does not have the key [%s]", c.cacheConfig.Name, key)
+				log.Printf("CacheRedis NOT FOUND - [%s] does not have the key [%s] (actual: %s)", c.cacheConfig.Name, key, actualKey)
 			}
 			result = schema.NOT_FOUND
 			err = nil // handle this case as not an error
 		} else {
-			log.Printf("CacheRedis ERROR - [%s] has error while it gets the value of the key [%s] from Redis server, error: [%v]", c.cacheConfig.Name, key, err)
+			log.Printf("CacheRedis ERROR - [%s] has error while it gets the value of the key [%s] (actual: %s) from Redis server, error: [%v]", c.cacheConfig.Name, key, actualKey, err)
 			result = schema.ERROR
 		}
 	} else {
-		e := schema.ElementForCacheMap{}
+		e := schema.ElementForCache{}
 		err = json.Unmarshal(bytes, &e)
 		if err != nil {
-			log.Printf("CacheRedis ERROR - [%s] has error while it unmarshal the value of the key [%s] from Redis server, error: [%v]", c.cacheConfig.Name, key, err)
+			log.Printf("CacheRedis ERROR - [%s] has error while it unmarshal the value of the key [%s] (actual: %s) from Redis server, error: [%v]", c.cacheConfig.Name, key, actualKey, err)
 		} else {
 			value = e.Value
 			lastUpdated = &e.LastUpdated
@@ -122,14 +137,14 @@ func (c *CacheRedis) Load(ctx context.Context, key string) (value interface{}, r
 
 			if now.Before(e.ExpireAt) {
 				if c.cacheConfig.Verbose {
-					log.Printf("CacheRedis LOAD - [%s] loaded the key: [%s]", c.cacheConfig.Name, key)
+					log.Printf("CacheRedis LOAD - [%s] loaded the key: [%s] (actual: %s)", c.cacheConfig.Name, key, actualKey)
 				}
 				result = schema.VALID
 			} else {
 				if c.cacheConfig.Verbose {
 					loc := time.FixedZone("KST", 9*60*60)
-					log.Printf("CacheRedis EXPIRED - [%s] has the key [%v] but, it was expired now(): [%s], expired at: [%s]",
-						c.cacheConfig.Name, key, now.In(loc).Format(time.RFC3339), e.ExpireAt.In(loc).Format(time.RFC3339))
+					log.Printf("CacheRedis EXPIRED - [%s] has the key [%v] (actual: %s) but, it was expired now(): [%s], expired at: [%s]",
+						c.cacheConfig.Name, key, actualKey, now.In(loc).Format(time.RFC3339), e.ExpireAt.In(loc).Format(time.RFC3339))
 				}
 				result = schema.EXPIRED
 			}
