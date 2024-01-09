@@ -1,10 +1,11 @@
-package cachemap
+package cacheMap
 
 import (
 	"log"
 	"sync"
 	"time"
 
+	"github.com/KiwonKim-git/cachemap/schema"
 	"github.com/robfig/cron"
 )
 
@@ -32,29 +33,27 @@ func (j CacheJob) Run() {
 		j.cacheMap.Range(j.removeExpiredEntry)
 
 	} else {
-		log.Printf("CacheScheduler.go# [%s] CacheJob runs but, cacheMap is nil", j.name)
+		log.Printf("CacheJob - [%s] runs but, cacheMap is nil", j.name)
 		return
 	}
 
-	log.Printf("CacheScheduler.go# [%s] CacheJob runs at [%s], Total: [%d], Expired: [%d]", j.name, now.In(loc).Format(time.RFC3339), j.total, j.expired)
+	log.Printf("CacheJob - [%s] runs at [%s], Total: [%d], Expired: [%d]", j.name, now.In(loc).Format(time.RFC3339), j.total, j.expired)
 }
 func (j *CacheJob) removeExpiredEntry(key, value interface{}) bool {
 
 	j.total++
 	// log.Printf("CacheScheduler.go# [%s] existing entries - key: [%v]", j.name, key)
 
-	element, ok := value.(ElementForCacheMap)
+	element, ok := value.(schema.ElementForCache)
 	now := time.Now()
 
-	if ok && now.After(element.expire) {
+	if ok && now.After(element.ExpireAt) {
 
 		j.expired++
 		loc := time.FixedZone("KST", 9*60*60)
-		log.Printf("CacheScheduler.go# [%s] removeExpiredEntry key: [%v] expired at [%s]", j.name, key, element.expire.In(loc).Format(time.RFC3339))
+		log.Printf("CacheJob REMOVE - [%s] removeExpiredEntry key: [%v] expired at [%s]", j.name, key, element.ExpireAt.In(loc).Format(time.RFC3339))
 
 		j.cacheMap.Delete(key)
-
-		log.Printf("CacheScheduler.go# [%s] removeExpiredEntry delete key: [%v]", j.name, key)
 	}
 
 	return true
