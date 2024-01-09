@@ -30,7 +30,7 @@ type CacheConf struct {
 }
 
 type RedisConf struct {
-	// Namespace for database. Usually application name if the appliction consist of multiple incstances (e.g., multiple pods).
+	// Namespace for database to store KEY and VALUE in same logical storage. Usually service name if the appliction consist of multiple applications.
 	/* Default: Name value in CacheConf */
 	Namespace string
 	// Group name to prevent key duplication in same namespcae. E.g., if you want to use session ID as a KEY in differnt data cetegories, it may cause key duplication among data categories.
