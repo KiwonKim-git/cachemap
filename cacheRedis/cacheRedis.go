@@ -28,8 +28,9 @@ func CreateCacheRedis(ctx context.Context, config *schema.CacheConf) *CacheRedis
 			ClientName: config.Name,
 			Network:    config.RedisConf.Protocol,
 			Addr:       config.RedisConf.ServerAddress + ":" + config.RedisConf.ServerPort,
-			Password:   config.RedisConf.Password, // no password set
 			DB:         0,                         // use default DB
+			Username:   config.RedisConf.Username, // no username specified
+			Password:   config.RedisConf.Password, // no password set
 		})
 
 		c.cacheConfig.Verbose = config.Verbose

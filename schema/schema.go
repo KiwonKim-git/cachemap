@@ -39,5 +39,6 @@ type RedisConf struct {
 	ServerAddress string
 	ServerPort    string
 	Protocol      string
+	Username      string
 	Password      string
 }
