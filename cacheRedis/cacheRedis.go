@@ -11,7 +11,7 @@ import (
 )
 
 type CacheRedis struct {
-	cache       *redis.Client
+	cache       *redis.ClusterClient
 	cacheConfig *schema.CacheConf
 }
 
@@ -24,11 +24,9 @@ func CreateCacheRedis(ctx context.Context, config *schema.CacheConf) *CacheRedis
 
 	if config != nil && config.RedisConf != nil {
 
-		c.cache = getRedisClient(ctx, &redis.Options{
+		c.cache = getRedisClient(ctx, &redis.ClusterOptions{
 			ClientName: config.Name,
-			Network:    config.RedisConf.Protocol,
-			Addr:       config.RedisConf.ServerAddress + ":" + config.RedisConf.ServerPort,
-			DB:         0,                         // use default DB
+			Addrs:      config.RedisConf.ServerAddresses,
 			Username:   config.RedisConf.Username, // no username specified
 			Password:   config.RedisConf.Password, // no password set
 		})
@@ -47,8 +45,8 @@ func CreateCacheRedis(ctx context.Context, config *schema.CacheConf) *CacheRedis
 		}
 	}
 
-	log.Printf("CacheRedis CREATE - [%s] created CacheRedis cacheDuration: [%s], randomizedDuration: [%t], serverAddress: [%s:%s]",
-		c.cacheConfig.Name, c.cacheConfig.CacheDuration.String(), c.cacheConfig.RandomizedDuration, c.cacheConfig.RedisConf.ServerAddress, c.cacheConfig.RedisConf.ServerPort)
+	log.Printf("CacheRedis CREATE - [%s] created CacheRedis cacheDuration: [%s], randomizedDuration: [%t], serverAddress: [%v]",
+		c.cacheConfig.Name, c.cacheConfig.CacheDuration.String(), c.cacheConfig.RandomizedDuration, c.cacheConfig.RedisConf.ServerAddresses)
 
 	return c
 }
