@@ -6,8 +6,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func getRedisClient(ctx context.Context, opt *redis.Options) (client *redis.Client) {
+func getRedisClient(ctx context.Context, opt *redis.ClusterOptions) (client *redis.ClusterClient) {
 
-	client = redis.NewClient(opt)
+	client = redis.NewClusterClient(opt)
 	return client
 }

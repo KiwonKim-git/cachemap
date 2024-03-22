@@ -35,9 +35,10 @@ type RedisConf struct {
 	Namespace string
 	// Group name to prevent key duplication in same namespcae. E.g., if you want to use session ID as a KEY in differnt data cetegories, it may cause key duplication among data categories.
 	/* Default: empty */
-	Group         string
-	ServerAddress string
-	ServerPort    string
-	Protocol      string
-	Password      string
+	Group string
+	// A list of server address for Redis Cluster
+	/* [host1:port1, host2:port2, ... hostN:portN] */
+	ServerAddresses []string
+	Username        string
+	Password        string
 }

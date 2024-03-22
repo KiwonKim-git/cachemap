@@ -6,7 +6,7 @@ This repository is to provide cache by using hashmap written in GO
 ### 1.1. import library 
 
 ``` go
-import cachemap "github.com/KiwonKim-git/cachemap" 
+import "github.com/KiwonKim-git/cachemap/cacheMap"
 ```
 
 ### 1.2. define expiration duration of element in cachemap
@@ -85,7 +85,7 @@ const (
 ### 2.1. import library 
 
 ``` go
-import cachemap "github.com/KiwonKim-git/cachemap" 
+import "github.com/KiwonKim-git/cachemap/cacheRedis"
 ```
 
 ### 2.2. define expiration duration of element in cachemap
@@ -108,19 +108,18 @@ The cache with Redis requires the configuration to connect and use Redis Server.
 
 example :    
 
-``` go
+```go
 sessionCache = cacheRedis.CreateCacheRedis(ctx, &schema.CacheConf{
-    Verbose:            verb,
+    Verbose:            true,
     Name:               "SessionCache",
     CacheDuration:      DURATION,
     RandomizedDuration: true,
     RedisConf: &schema.RedisConf{
-        Namespace:     "session",
-        Group:         "",
-        ServerAddress: os.Getenv("ENV_REDIS_HOST"),
-        ServerPort:    os.Getenv("ENV_REDIS_PORT"),
-        Protocol:      "tcp",
-        Password:      "",
+        Namespace:       "session",
+        Group:           "",
+        ServerAddresses: []string{"HOST1_ADDRESS:PORT", "HOST2_ADDRESS:PORT", "..."},
+        Username:        "REDIS_USER_NAME",
+        Password:        "REDIS_PASSWORD,
     },
 })
 ```
