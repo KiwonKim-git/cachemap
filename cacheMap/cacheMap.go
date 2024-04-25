@@ -5,14 +5,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/KiwonKim-git/cachemap/scheduler"
 	"github.com/KiwonKim-git/cachemap/schema"
-	"github.com/robfig/cron"
 )
 
 type CacheMap struct {
 	cacheMap    *sync.Map
 	cacheConfig *schema.CacheConf
-	scheduler   CacheScheduler
+	scheduler   *scheduler.CacheScheduler
 }
 
 func CreateCacheMap(config *schema.CacheConf) *CacheMap {
@@ -20,7 +20,6 @@ func CreateCacheMap(config *schema.CacheConf) *CacheMap {
 	c := &CacheMap{
 		cacheMap:    &sync.Map{},
 		cacheConfig: &schema.CacheConf{},
-		scheduler:   CacheScheduler{},
 	}
 
 	if config != nil {
@@ -32,28 +31,21 @@ func CreateCacheMap(config *schema.CacheConf) *CacheMap {
 		} else {
 			c.cacheConfig.CacheDuration = config.CacheDuration
 		}
-		c.cacheConfig.CronExprForScheduler = config.CronExprForScheduler
 		c.cacheConfig.RedisConf = nil // do not use Redis config for sync.Map cache
 	} else {
 		c.cacheConfig.Verbose = false
 		c.cacheConfig.Name = "cacheMap"
 		c.cacheConfig.RandomizedDuration = false
-		c.cacheConfig.CacheDuration = 1 * time.Hour        //1hour
-		c.cacheConfig.CronExprForScheduler = "0 0 * * * *" //every hour
+		c.cacheConfig.CacheDuration = 1 * time.Hour // Default. 1 hour.
 		c.cacheConfig.RedisConf = nil
 	}
 
-	c.scheduler.job = CacheJob{
-		name:     c.cacheConfig.Name,
-		cacheMap: c.cacheMap,
-	}
+	c.cacheConfig.SchedulerConf = scheduler.GetCacheSchedulerConfig(config)
 
-	c.scheduler.cron = cron.New()
-	c.scheduler.cron.AddJob(c.cacheConfig.CronExprForScheduler, c.scheduler.job)
-	c.scheduler.cron.Start()
+	c.scheduler = scheduler.NewCacheScheduler(c.cacheMap, c.cacheConfig)
 
 	log.Printf("CacheMap CREATE - [%s] created CacheMap cacheDuration: [%s], randomizedDuration: [%t], cronExprForScheduler: [%s]",
-		c.cacheConfig.Name, c.cacheConfig.CacheDuration.String(), c.cacheConfig.RandomizedDuration, c.cacheConfig.CronExprForScheduler)
+		c.cacheConfig.Name, c.cacheConfig.CacheDuration.String(), c.cacheConfig.RandomizedDuration, c.cacheConfig.SchedulerConf.CronExprForScheduler)
 
 	return c
 }

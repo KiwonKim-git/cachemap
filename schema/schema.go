@@ -21,13 +21,22 @@ type ElementForCache struct {
 }
 
 type CacheConf struct {
-	Verbose              bool
-	Name                 string
-	CacheDuration        time.Duration
-	RandomizedDuration   bool
-	CronExprForScheduler string // Seconds Minutes Hours Day_of_month Month Day_of_week  (e.g. "0 0 12 * * *" means 12:00:00 PM every day)
-	RedisConf            *RedisConf
+	Verbose            bool
+	Name               string
+	CacheDuration      time.Duration
+	RandomizedDuration bool
+	RedisConf          *RedisConf
+	SchedulerConf      *SchedulerConf
 }
+
+type SchedulerConf struct {
+	// Seconds Minutes Hours Day_of_month Month Day_of_week  (e.g. "0 0 12 * * *" means 12:00:00 PM every day)
+	CronExprForScheduler string
+	PreProcess           ProcessFunc
+	PostProcess          ProcessFunc
+}
+
+type ProcessFunc func(element ElementForCache) (logs string, err error)
 
 type RedisConf struct {
 	// Namespace for database to store KEY and VALUE in same logical storage. Usually service name if the appliction consist of multiple applications.
