@@ -55,8 +55,13 @@ func (j *cacheJob) removeExpiredEntry(key, value interface{}) bool {
 		j.increaseExpiredEntry()
 
 		if j.config != nil && j.config.SchedulerConf != nil && j.config.SchedulerConf.PreProcess != nil {
-			logs, _ := j.config.SchedulerConf.PreProcess(element.value)
-			log.Println(logs)
+			logs, err := j.config.SchedulerConf.PreProcess(element.value)
+			if j.config.Verbose && logs != "" {
+				log.Println(logs)
+			}
+			if err != nil {
+				log.Println("Failed while pre-processing before deletion of the element. Error: ", err)
+			}
 		}
 
 		if j.config.Verbose {
@@ -67,8 +72,13 @@ func (j *cacheJob) removeExpiredEntry(key, value interface{}) bool {
 		j.cacheMap.Delete(key)
 
 		if j.config != nil && j.config.SchedulerConf != nil && j.config.SchedulerConf.PostProcess != nil {
-			logs, _ := j.config.SchedulerConf.PostProcess(element.value)
-			log.Println(logs)
+			logs, err := j.config.SchedulerConf.PostProcess(element.value)
+			if j.config.Verbose && logs != "" {
+				log.Println(logs)
+			}
+			if err != nil {
+				log.Println("Failed while post-processing after deletion of the element. Error: ", err)
+			}
 		}
 	}
 
