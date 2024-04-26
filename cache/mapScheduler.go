@@ -55,7 +55,7 @@ func (j *cacheJob) removeExpiredEntry(key, value interface{}) bool {
 		j.increaseExpiredEntry()
 
 		if j.config != nil && j.config.SchedulerConf != nil && j.config.SchedulerConf.PreProcess != nil {
-			logs, _ := j.config.SchedulerConf.PreProcess(element)
+			logs, _ := j.config.SchedulerConf.PreProcess(element.value)
 			log.Println(logs)
 		}
 
@@ -67,7 +67,7 @@ func (j *cacheJob) removeExpiredEntry(key, value interface{}) bool {
 		j.cacheMap.Delete(key)
 
 		if j.config != nil && j.config.SchedulerConf != nil && j.config.SchedulerConf.PostProcess != nil {
-			logs, _ := j.config.SchedulerConf.PostProcess(element)
+			logs, _ := j.config.SchedulerConf.PostProcess(element.value)
 			log.Println(logs)
 		}
 	}
