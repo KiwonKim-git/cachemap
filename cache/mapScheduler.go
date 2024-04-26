@@ -1,4 +1,4 @@
-package scheduler
+package cache
 
 import (
 	"log"
@@ -9,12 +9,12 @@ import (
 	"github.com/robfig/cron"
 )
 
-type CacheScheduler struct {
+type cacheScheduler struct {
 	cron *cron.Cron
-	job  CacheJob
+	job  cacheJob
 }
 
-type CacheJob struct {
+type cacheJob struct {
 	name     string
 	cacheMap *sync.Map
 	total    int
@@ -22,7 +22,7 @@ type CacheJob struct {
 	config   *schema.CacheConf
 }
 
-func (j CacheJob) Run() {
+func (j cacheJob) Run() {
 
 	loc := time.FixedZone("KST", 9*60*60)
 	now := time.Now()
@@ -40,17 +40,17 @@ func (j CacheJob) Run() {
 
 	log.Printf("CacheJob - [%s] runs at [%s], Total: [%d], Expired: [%d]", j.name, now.In(loc).Format(time.RFC3339), j.total, j.expired)
 }
-func (j *CacheJob) removeExpiredEntry(key, value interface{}) bool {
+func (j *cacheJob) removeExpiredEntry(key, value interface{}) bool {
 
 	j.increaseTotalEntry()
 	// log.Printf("CacheScheduler.go# [%s] existing entries - key: [%v]", j.name, key)
 
-	element, ok := value.(schema.ElementForCache)
+	element, ok := value.(elementForCache)
 	now := time.Now()
 
 	if !ok {
 		log.Println("Failed while converting from interface{} to the cache element. Key: ", key)
-	} else if now.After(element.ExpireAt) {
+	} else if now.After(element.expireAt) {
 
 		j.increaseExpiredEntry()
 
@@ -61,7 +61,7 @@ func (j *CacheJob) removeExpiredEntry(key, value interface{}) bool {
 
 		if j.config.Verbose {
 			loc := time.FixedZone("KST", 9*60*60)
-			log.Printf("CacheJob REMOVE - [%s] removeExpiredEntry key: [%v] expired at [%s] \n", j.name, key, element.ExpireAt.In(loc).Format(time.RFC3339))
+			log.Printf("CacheJob REMOVE - [%s] removeExpiredEntry key: [%v] expired at [%s] \n", j.name, key, element.expireAt.In(loc).Format(time.RFC3339))
 		}
 
 		j.cacheMap.Delete(key)
@@ -75,22 +75,22 @@ func (j *CacheJob) removeExpiredEntry(key, value interface{}) bool {
 	return true
 }
 
-func (j *CacheJob) increaseTotalEntry() (total int) {
+func (j *cacheJob) increaseTotalEntry() (total int) {
 
 	j.total += 1
 	return j.total
 }
 
-func (j *CacheJob) increaseExpiredEntry() (total int) {
+func (j *cacheJob) increaseExpiredEntry() (total int) {
 
 	j.expired += 1
 	return j.expired
 }
 
-func NewCacheScheduler(cacheMap *sync.Map, config *schema.CacheConf) (scheduler *CacheScheduler) {
-	scheduler = &CacheScheduler{}
+func getCacheScheduler(cacheMap *sync.Map, config *schema.CacheConf) (scheduler *cacheScheduler) {
+	scheduler = &cacheScheduler{}
 
-	scheduler.job = CacheJob{
+	scheduler.job = cacheJob{
 		name:     config.Name,
 		cacheMap: cacheMap,
 		total:    0,
@@ -104,7 +104,7 @@ func NewCacheScheduler(cacheMap *sync.Map, config *schema.CacheConf) (scheduler 
 	return scheduler
 }
 
-func GetCacheSchedulerConfig(cacheConf *schema.CacheConf) (schedulerConf *schema.SchedulerConf) {
+func getCacheSchedulerConfig(cacheConf *schema.CacheConf) (schedulerConf *schema.SchedulerConf) {
 
 	cronExpr := "0 0 * * * *" // Default. run every hour
 	var preProc schema.ProcessFunc = nil
