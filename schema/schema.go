@@ -13,21 +13,32 @@ const (
 	ERROR
 )
 
-// struct to store any element in map
-type ElementForCache struct {
-	ExpireAt    time.Time
-	LastUpdated time.Time
-	Value       interface{}
+type CacheConf struct {
+	// True if the cache should print more logs for debugging purpose
+	Verbose bool
+	// Name of the cache
+	Name string
+	// Duration for cache to be expired
+	CacheDuration time.Duration
+	// True if the cache duration should be randomized
+	RandomizedDuration bool
+	// Redis configuration if this cache is used with Redis Cluster
+	RedisConf *RedisConf
+	// Configuration for scheduler to remove expired entry
+	SchedulerConf *SchedulerConf
 }
 
-type CacheConf struct {
-	Verbose              bool
-	Name                 string
-	CacheDuration        time.Duration
-	RandomizedDuration   bool
-	CronExprForScheduler string // Seconds Minutes Hours Day_of_month Month Day_of_week  (e.g. "0 0 12 * * *" means 12:00:00 PM every day)
-	RedisConf            *RedisConf
+type SchedulerConf struct {
+	// Seconds Minutes Hours Day_of_month Month Day_of_week  (e.g. "0 0 12 * * *" means 12:00:00 PM every day)
+	CronExprForScheduler string
+	// A function that will be called before removing the expired entry
+	PreProcess ProcessFunc
+	// A function that will be called after removing the expired entry
+	PostProcess ProcessFunc
 }
+
+// A function that process data entry in cache. Returns logs and error if any.
+type ProcessFunc func(value interface{}) (logs string, err error)
 
 type RedisConf struct {
 	// Namespace for database to store KEY and VALUE in same logical storage. Usually service name if the appliction consist of multiple applications.

@@ -1,4 +1,4 @@
-package cacheMap
+package cache
 
 import (
 	"log"
@@ -6,21 +6,19 @@ import (
 	"time"
 
 	"github.com/KiwonKim-git/cachemap/schema"
-	"github.com/robfig/cron"
 )
 
 type CacheMap struct {
 	cacheMap    *sync.Map
 	cacheConfig *schema.CacheConf
-	scheduler   CacheScheduler
+	scheduler   *cacheScheduler
 }
 
-func CreateCacheMap(config *schema.CacheConf) *CacheMap {
+func NewCacheMap(config *schema.CacheConf) *CacheMap {
 
 	c := &CacheMap{
 		cacheMap:    &sync.Map{},
 		cacheConfig: &schema.CacheConf{},
-		scheduler:   CacheScheduler{},
 	}
 
 	if config != nil {
@@ -32,28 +30,21 @@ func CreateCacheMap(config *schema.CacheConf) *CacheMap {
 		} else {
 			c.cacheConfig.CacheDuration = config.CacheDuration
 		}
-		c.cacheConfig.CronExprForScheduler = config.CronExprForScheduler
 		c.cacheConfig.RedisConf = nil // do not use Redis config for sync.Map cache
 	} else {
 		c.cacheConfig.Verbose = false
 		c.cacheConfig.Name = "cacheMap"
 		c.cacheConfig.RandomizedDuration = false
-		c.cacheConfig.CacheDuration = 1 * time.Hour        //1hour
-		c.cacheConfig.CronExprForScheduler = "0 0 * * * *" //every hour
+		c.cacheConfig.CacheDuration = 1 * time.Hour // Default. 1 hour.
 		c.cacheConfig.RedisConf = nil
 	}
 
-	c.scheduler.job = CacheJob{
-		name:     c.cacheConfig.Name,
-		cacheMap: c.cacheMap,
-	}
+	c.cacheConfig.SchedulerConf = getCacheSchedulerConfig(config)
 
-	c.scheduler.cron = cron.New()
-	c.scheduler.cron.AddJob(c.cacheConfig.CronExprForScheduler, c.scheduler.job)
-	c.scheduler.cron.Start()
+	c.scheduler = getCacheScheduler(c.cacheMap, c.cacheConfig)
 
 	log.Printf("CacheMap CREATE - [%s] created CacheMap cacheDuration: [%s], randomizedDuration: [%t], cronExprForScheduler: [%s]",
-		c.cacheConfig.Name, c.cacheConfig.CacheDuration.String(), c.cacheConfig.RandomizedDuration, c.cacheConfig.CronExprForScheduler)
+		c.cacheConfig.Name, c.cacheConfig.CacheDuration.String(), c.cacheConfig.RandomizedDuration, c.cacheConfig.SchedulerConf.CronExprForScheduler)
 
 	return c
 }
@@ -63,29 +54,29 @@ func CreateCacheMap(config *schema.CacheConf) *CacheMap {
 // If not, you can just set expireAt as nil and the duration in cache config will be used.
 func (c *CacheMap) Store(key interface{}, value interface{}, expireAt *time.Time) {
 
-	e := schema.ElementForCache{}
+	e := elementForCache{}
 
 	randomizedTime := int64(0)
 	now := time.Now()
 	if expireAt != nil && expireAt.After(now) {
-		e.ExpireAt = *expireAt
+		e.expireAt = *expireAt
 	} else {
 		if c.cacheConfig.RandomizedDuration {
 			randomizedTime = int64((now.UnixNano() % 25) * int64(c.cacheConfig.CacheDuration) / 100)
-			e.ExpireAt = now.Add(time.Duration(randomizedTime)).Add(c.cacheConfig.CacheDuration)
+			e.expireAt = now.Add(time.Duration(randomizedTime)).Add(c.cacheConfig.CacheDuration)
 		} else {
-			e.ExpireAt = now.Add(c.cacheConfig.CacheDuration)
+			e.expireAt = now.Add(c.cacheConfig.CacheDuration)
 		}
 	}
-	e.LastUpdated = now
-	e.Value = value
+	e.lastUpdated = now
+	e.value = value
 
 	c.cacheMap.Store(key, e)
 
 	if c.cacheConfig.Verbose {
 		loc := time.FixedZone("KST", 9*60*60)
 		log.Printf("CacheMap STORE - [%s] stored the key [%v] at [%s] and it will be expired at [%s] with randomizedTime: [%s]",
-			c.cacheConfig.Name, key, e.LastUpdated.In(loc).Format(time.RFC3339), e.ExpireAt.In(loc).Format(time.RFC3339), time.Duration(randomizedTime).String())
+			c.cacheConfig.Name, key, e.lastUpdated.In(loc).Format(time.RFC3339), e.expireAt.In(loc).Format(time.RFC3339), time.Duration(randomizedTime).String())
 	}
 }
 
@@ -99,12 +90,12 @@ func (c *CacheMap) Load(key interface{}) (value interface{}, result schema.RESUL
 
 	if ok && v != nil {
 
-		e, ok := v.(schema.ElementForCache)
-		value = e.Value
-		lastUpdated = &e.LastUpdated
+		e, ok := v.(elementForCache)
+		value = e.value
+		lastUpdated = &e.lastUpdated
 
 		now := time.Now()
-		if ok && now.Before(e.ExpireAt) {
+		if ok && now.Before(e.expireAt) {
 			if c.cacheConfig.Verbose {
 				log.Printf("CacheMap LOAD - [%s] loaded the key: [%v]", c.cacheConfig.Name, key)
 			}
@@ -113,7 +104,7 @@ func (c *CacheMap) Load(key interface{}) (value interface{}, result schema.RESUL
 			if c.cacheConfig.Verbose {
 				loc := time.FixedZone("KST", 9*60*60)
 				log.Printf("CacheMap EXPIRED - [%s] has the key [%v] but, it was expired and/or the data is invaild, ok : [%t], now() : [%s], expired at : [%s]",
-					c.cacheConfig.Name, key, ok, now.In(loc).Format(time.RFC3339), e.ExpireAt.In(loc).Format(time.RFC3339))
+					c.cacheConfig.Name, key, ok, now.In(loc).Format(time.RFC3339), e.expireAt.In(loc).Format(time.RFC3339))
 			}
 			result = schema.EXPIRED
 		}

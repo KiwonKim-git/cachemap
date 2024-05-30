@@ -1,4 +1,4 @@
-package cacheRedis
+package cache
 
 import (
 	"context"
