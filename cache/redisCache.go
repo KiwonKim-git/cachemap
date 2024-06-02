@@ -11,7 +11,7 @@ import (
 )
 
 type CacheRedis struct {
-	cache       *redis.ClusterClient
+	cache       redis.UniversalClient
 	cacheConfig *schema.CacheConf
 }
 
@@ -24,7 +24,7 @@ func NewCacheRedis(ctx context.Context, config *schema.CacheConf) *CacheRedis {
 
 	if config != nil && config.RedisConf != nil {
 
-		c.cache = getRedisClient(ctx, &redis.ClusterOptions{
+		c.cache = getRedisClient(ctx, &redis.UniversalOptions{
 			ClientName: config.Name,
 			Addrs:      config.RedisConf.ServerAddresses,
 			Username:   config.RedisConf.Username, // no username specified
