@@ -6,7 +6,7 @@ This repository is to provide cache by using hashmap written in GO
 ### 1.1. import library 
 
 ``` go
-import "github.com/KiwonKim-git/cachemap/cacheMap"
+import "github.com/KiwonKim-git/cachemap/cache"
 ```
 
 ### 1.2. define expiration duration of element in cachemap
@@ -30,17 +30,23 @@ const SCHEDULE string = "0 0 18 * * *"        // run at everyday 18:00 in UTC
 
 ### 1.4. create cachemap 
 if the Verbose is true, this liberary will print logs when there is load and store operation.   
+If you set up scheduler, you can add function for pre-processing and post-processing. (Default : nil)    
+PreProcess will be called before deletion of entry in cache and PostProcess will be call after deletion of entry in cache.   
 
 example :    
 
 ``` go
-tokenCache = cacheMap.CreateCacheMap(&schema.CacheConf{
-    Verbose:              verb,
+tokenCache = cache.NewCacheMap(&schema.CacheConf{
+    Verbose:              true,
     Name:                 "TokenCache",
     CacheDuration:        DURATION,
     RandomizedDuration:   false,
-    CronExprForScheduler: SCHEDULE,
     RedisConf:            nil,
+    SchedulerConf: &schema.SchedulerConf{
+        CronExprForScheduler: SCHEDULE,
+        PreProcess:           func(value interface{}) (logs string, err error){return "", nil},
+        PostProcess:          func(value interface{}) (logs string, err error){return "", nil},
+    },
 })
 ```
 
