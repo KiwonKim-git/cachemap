@@ -24,7 +24,7 @@ func NewCacheRedis(ctx context.Context, config *schema.CacheConf) *CacheRedis {
 
 	if config != nil && config.RedisConf != nil {
 
-		c.cache = getRedisClient(ctx, &redis.UniversalOptions{
+		c.cache = redis.NewUniversalClient(&redis.UniversalOptions{
 			ClientName: config.Name,
 			Addrs:      config.RedisConf.ServerAddresses,
 			Username:   config.RedisConf.Username, // no username specified
