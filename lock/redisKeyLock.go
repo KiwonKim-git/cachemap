@@ -1,6 +1,7 @@
 package lock
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/KiwonKim-git/cachemap/cache"
@@ -73,15 +74,18 @@ func (l *RedisLockPool) Lock(key string) (err error) {
 // Release the lock and then other processes or threads can obtain a lock. Ok will represent the status of unlocking.
 func (l *RedisLockPool) Unlock(key string) (ok bool, err error) {
 
+	ok = false
+	err = nil
+
 	mu, result := l.getLockByKey(key)
 	if result == schema.VALID {
 		return mu.Unlock()
 	} else if result == schema.NOT_FOUND {
-		log.Printf("Unlock - [%s] does not exist but unlock is requested", key)
+		err = fmt.Errorf("Unlock - [%s] does not exist but unlock is requested", key)
 	} else if result == schema.EXPIRED {
-		log.Printf("Unlock - [%s] is expired but unlock is requested", key)
+		err = fmt.Errorf("Unlock - [%s] is expired but unlock is requested", key)
 	} else {
-		log.Printf("Unlock - [%s] is in error state but unlock is requested", key)
+		err = fmt.Errorf("Unlock - [%s] is in error state but unlock is requested", key)
 	}
-	return false, nil
+	return ok, err
 }
