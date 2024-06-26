@@ -9,15 +9,15 @@ import (
 )
 
 type CacheMap struct {
-	cacheMap    *sync.Map
+	cache       *sync.Map
 	cacheConfig *schema.CacheConf
-	scheduler   *cacheScheduler
+	scheduler   *mapScheduler
 }
 
 func NewCacheMap(config *schema.CacheConf) *CacheMap {
 
 	c := &CacheMap{
-		cacheMap:    &sync.Map{},
+		cache:       &sync.Map{},
 		cacheConfig: &schema.CacheConf{},
 	}
 
@@ -39,9 +39,9 @@ func NewCacheMap(config *schema.CacheConf) *CacheMap {
 		c.cacheConfig.RedisConf = nil
 	}
 
-	c.cacheConfig.SchedulerConf = getCacheSchedulerConfig(config)
+	c.cacheConfig.SchedulerConf = getSchedulerConfig(config)
 
-	c.scheduler = getCacheScheduler(c.cacheMap, c.cacheConfig)
+	c.scheduler = getMapScheduler(c.cache, c.cacheConfig)
 
 	log.Printf("CacheMap CREATE - [%s] created CacheMap cacheDuration: [%s], randomizedDuration: [%t], cronExprForScheduler: [%s]",
 		c.cacheConfig.Name, c.cacheConfig.CacheDuration.String(), c.cacheConfig.RandomizedDuration, c.cacheConfig.SchedulerConf.CronExprForScheduler)
@@ -71,7 +71,7 @@ func (c *CacheMap) Store(key interface{}, value interface{}, expireAt *time.Time
 	e.lastUpdated = now
 	e.value = value
 
-	c.cacheMap.Store(key, e)
+	c.cache.Store(key, e)
 
 	if c.cacheConfig.Verbose {
 		loc := time.FixedZone("KST", 9*60*60)
@@ -86,7 +86,7 @@ func (c *CacheMap) Load(key interface{}) (value interface{}, result schema.RESUL
 	result = schema.NOT_FOUND
 	lastUpdated = nil
 
-	v, ok := c.cacheMap.Load(key)
+	v, ok := c.cache.Load(key)
 
 	if ok && v != nil {
 

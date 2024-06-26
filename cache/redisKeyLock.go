@@ -1,10 +1,9 @@
-package lock
+package cache
 
 import (
 	"fmt"
 	"log"
 
-	"github.com/KiwonKim-git/cachemap/cache"
 	"github.com/KiwonKim-git/cachemap/schema"
 	"github.com/go-redsync/redsync/v4"
 	"github.com/go-redsync/redsync/v4/redis/goredis/v9"
@@ -18,7 +17,8 @@ import (
 // Redis Cluster is used for storing the lock information.
 type RedisLockPool struct {
 	redsync  *redsync.Redsync
-	keyLocks *cache.CacheMap
+	keyLocks *CacheMap
+	config   *schema.CacheConf
 }
 
 func NewRedisLockPool(config *schema.CacheConf) (lockPool *RedisLockPool) {
@@ -46,13 +46,15 @@ func NewRedisLockPool(config *schema.CacheConf) (lockPool *RedisLockPool) {
 
 	return &RedisLockPool{
 		redsync:  rs,
-		keyLocks: cache.NewCacheMap(config),
+		keyLocks: NewCacheMap(config),
+		config:   config,
 	}
 }
 
 func (l *RedisLockPool) getLockByKey(key string) (mu *redsync.Mutex, result schema.RESULT) {
 
-	v, result, _ := l.keyLocks.Load(key)
+	actualKey := getRedisKeyPrefix(l.config.RedisConf) + ":" + key
+	v, result, _ := l.keyLocks.Load(actualKey)
 	if result == schema.VALID && v != nil {
 		mu, ok := v.(*redsync.Mutex)
 		if ok {
@@ -60,8 +62,8 @@ func (l *RedisLockPool) getLockByKey(key string) (mu *redsync.Mutex, result sche
 		}
 	}
 	// Obtain a new mutex by using the same name for all instances wanting the same lock.
-	mu = l.redsync.NewMutex(key)
-	l.keyLocks.Store(key, mu, nil)
+	mu = l.redsync.NewMutex(actualKey)
+	l.keyLocks.Store(actualKey, mu, nil)
 	return mu, result
 }
 
@@ -69,6 +71,13 @@ func (l *RedisLockPool) getLockByKey(key string) (mu *redsync.Mutex, result sche
 func (l *RedisLockPool) Lock(key string) (err error) {
 	mu, _ := l.getLockByKey(key)
 	return mu.Lock()
+}
+
+// Obtain a lock for given key. After this is successful, no one else can obtain the same lock (the same mutex name) until it is unlocked.
+// And also TryLock only attempts to lock m once and returns immediately regardless of success or failure without retrying.
+func (l *RedisLockPool) TryLock(key string) (err error) {
+	mu, _ := l.getLockByKey(key)
+	return mu.TryLock()
 }
 
 // Release the lock and then other processes or threads can obtain a lock. Ok will represent the status of unlocking.

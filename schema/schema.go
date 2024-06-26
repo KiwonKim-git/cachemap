@@ -37,8 +37,8 @@ type SchedulerConf struct {
 	PostProcess ProcessFunc
 }
 
-// A function that process data entry in cache. Returns logs and error if any.
-type ProcessFunc func(value interface{}) (logs string, err error)
+// A function that process data entry in cache. Returns error if any.
+type ProcessFunc func(value interface{}) (err error)
 
 type RedisConf struct {
 	// Namespace for database to store KEY and VALUE in same logical storage. Usually service name if the appliction consist of multiple applications.

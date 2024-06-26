@@ -1,16 +1,15 @@
-package lock
+package cache
 
 import (
 	"log"
 	"sync"
 
-	"github.com/KiwonKim-git/cachemap/cache"
 	"github.com/KiwonKim-git/cachemap/schema"
 )
 
 // Provide a pool which consists of sync.Mutex lock for keys. This pool is implemented based on cacheMap and the lock in this pool is valid within the process (local).
 type MutexPool struct {
-	keyLocks *cache.CacheMap
+	keyLocks *CacheMap
 }
 
 func NewMutexPool(config *schema.CacheConf) (lockPool *MutexPool) {
@@ -18,7 +17,7 @@ func NewMutexPool(config *schema.CacheConf) (lockPool *MutexPool) {
 		log.Println("NewMapKeyLockPool is called with nil config")
 		return nil
 	}
-	return &MutexPool{keyLocks: cache.NewCacheMap(config)}
+	return &MutexPool{keyLocks: NewCacheMap(config)}
 }
 
 func (l *MutexPool) getLockByKey(key string) (mu *sync.Mutex, result schema.RESULT) {

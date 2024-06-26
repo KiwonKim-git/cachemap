@@ -13,13 +13,18 @@ import (
 type CacheRedis struct {
 	cache       redis.UniversalClient
 	cacheConfig *schema.CacheConf
+	scheduler   *redisScheduler
 }
 
-func NewCacheRedis(ctx context.Context, config *schema.CacheConf) *CacheRedis {
+const KEY_PREFIX_SHADOW = "shadow"
+const KEY_PREFIX_EXPIRED = "expired"
+
+func NewCacheRedis(config *schema.CacheConf) *CacheRedis {
 
 	c := &CacheRedis{
 		cache:       nil,
 		cacheConfig: &schema.CacheConf{},
+		scheduler:   nil,
 	}
 
 	if config != nil && config.RedisConf != nil {
@@ -43,6 +48,10 @@ func NewCacheRedis(ctx context.Context, config *schema.CacheConf) *CacheRedis {
 		if config.RedisConf.Namespace == "" {
 			c.cacheConfig.RedisConf.Namespace = c.cacheConfig.Name
 		}
+
+		c.cacheConfig.SchedulerConf = getSchedulerConfig(config)
+
+		c.scheduler = getRedisScheduler(c.cache, c.cacheConfig)
 	}
 
 	log.Printf("CacheRedis CREATE - [%s] created CacheRedis cacheDuration: [%s], randomizedDuration: [%t], serverAddress: [%v]",
@@ -79,13 +88,26 @@ func (c *CacheRedis) Store(ctx context.Context, key string, value interface{}, e
 		return err
 	}
 
-	actualKey := c.cacheConfig.RedisConf.Namespace
-	if c.cacheConfig.RedisConf.Group != "" {
-		actualKey += ":" + c.cacheConfig.RedisConf.Group
-	}
-	actualKey += ":" + key
+	keyPrefix := getRedisKeyPrefix(c.cacheConfig.RedisConf)
+	actualKey := keyPrefix + ":" + key
 
-	err = c.cache.Set(ctx, actualKey, bytes, e.expireAt.Sub(now)).Err()
+	// if the scheduler in CacheRedis is nil, set the expiration time to make Redis handle the expired keys and values.
+	// Otherwise, set the expiration time to 0 to make Cache Scheduler handle the expired keys and values.
+	// And then, set the shadow key with empty value to get expiration event.
+	// This is for the case that the client wants to use pre-process and/or post-process function before and after deletion of expired entries.
+	if c.scheduler == nil {
+		err = c.cache.Set(ctx, actualKey, bytes, e.expireAt.Sub(now)).Err()
+	} else {
+		err = c.cache.Set(ctx, actualKey, bytes, 0).Err()
+		if err != nil {
+			return err
+		}
+		shadowKey := keyPrefix + ":" + KEY_PREFIX_SHADOW + ":" + key
+		err = c.cache.Set(ctx, shadowKey, "", e.expireAt.Sub(now)).Err()
+		if err != nil {
+			log.Println("CacheRedis STORE - Failed to store shadow key and it should be deleted manually. Key: ", actualKey)
+		}
+	}
 	if err != nil {
 		return err
 	}
@@ -100,54 +122,67 @@ func (c *CacheRedis) Store(ctx context.Context, key string, value interface{}, e
 
 func (c *CacheRedis) Load(ctx context.Context, key string) (value interface{}, result schema.RESULT, lastUpdated *time.Time, err error) {
 
+	keyPrefix := getRedisKeyPrefix(c.cacheConfig.RedisConf)
+	actualKey := keyPrefix + ":" + key
+
+	return getValueFromRedis(ctx, c.cache, actualKey, c.cacheConfig)
+}
+
+func getValueFromRedis(ctx context.Context, client redis.UniversalClient, key string, config *schema.CacheConf) (value interface{}, result schema.RESULT, lastUpdated *time.Time, err error) {
+
 	value = nil
 	result = schema.NOT_FOUND
 	lastUpdated = nil
 	err = nil
 
-	actualKey := c.cacheConfig.RedisConf.Namespace
-	if c.cacheConfig.RedisConf.Group != "" {
-		actualKey += ":" + c.cacheConfig.RedisConf.Group
-	}
-	actualKey += ":" + key
-
-	bytes, err := c.cache.Get(ctx, actualKey).Bytes()
+	bytes, err := client.Get(ctx, key).Bytes()
 
 	if err != nil {
 		if err == redis.Nil {
-			if c.cacheConfig.Verbose {
-				log.Printf("CacheRedis NOT FOUND - [%s] does not have the key [%s] (actual: %s)", c.cacheConfig.Name, key, actualKey)
+			if config.Verbose {
+				log.Printf("CacheRedis NOT FOUND - [%s] does not have the key [%s]", config.Name, key)
 			}
 			result = schema.NOT_FOUND
 			err = nil // handle this case as not an error
 		} else {
-			log.Printf("CacheRedis ERROR - [%s] has error while it gets the value of the key [%s] (actual: %s) from Redis server, error: [%v]", c.cacheConfig.Name, key, actualKey, err)
+			log.Printf("CacheRedis ERROR - [%s] has error while it gets the value of the key [%s] from Redis server, error: [%v]", config.Name, key, err)
 			result = schema.ERROR
 		}
 	} else {
 		e := elementForCache{}
 		err = json.Unmarshal(bytes, &e)
 		if err != nil {
-			log.Printf("CacheRedis ERROR - [%s] has error while it unmarshal the value of the key [%s] (actual: %s) from Redis server, error: [%v]", c.cacheConfig.Name, key, actualKey, err)
+			log.Printf("CacheRedis ERROR - [%s] has error while it unmarshal the value of the key [%s] from Redis server, error: [%v]", config.Name, key, err)
 		} else {
 			value = e.value
 			lastUpdated = &e.lastUpdated
 			now := time.Now()
 
 			if now.Before(e.expireAt) {
-				if c.cacheConfig.Verbose {
-					log.Printf("CacheRedis LOAD - [%s] loaded the key: [%s] (actual: %s)", c.cacheConfig.Name, key, actualKey)
+				if config.Verbose {
+					log.Printf("CacheRedis LOAD - [%s] loaded the key: [%s]", config.Name, key)
 				}
 				result = schema.VALID
 			} else {
-				if c.cacheConfig.Verbose {
+				if config.Verbose {
 					loc := time.FixedZone("KST", 9*60*60)
-					log.Printf("CacheRedis EXPIRED - [%s] has the key [%v] (actual: %s) but, it was expired now(): [%s], expired at: [%s]",
-						c.cacheConfig.Name, key, actualKey, now.In(loc).Format(time.RFC3339), e.expireAt.In(loc).Format(time.RFC3339))
+					log.Printf("CacheRedis EXPIRED - [%s] has the key [%v] but, it was expired now(): [%s], expired at: [%s]",
+						config.Name, key, now.In(loc).Format(time.RFC3339), e.expireAt.In(loc).Format(time.RFC3339))
 				}
 				result = schema.EXPIRED
 			}
 		}
 	}
 	return value, result, lastUpdated, err
+}
+
+func getRedisKeyPrefix(config *schema.RedisConf) (prifix string) {
+	if config == nil {
+		return ""
+	}
+	prifix = config.Namespace
+	if config.Group != "" {
+		prifix += ":" + config.Group
+	}
+	return prifix
 }
