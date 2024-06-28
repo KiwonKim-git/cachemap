@@ -25,6 +25,11 @@ type redisJob struct {
 	keyLock      *RedisLockPool
 }
 
+type pubSubObj struct {
+	pubSub *redis.PubSub
+	name   string
+}
+
 func (j redisJob) Run() {
 
 	loc := time.FixedZone("KST", 9*60*60)
@@ -198,24 +203,36 @@ func getRedisScheduler(cache redis.UniversalClient, config *schema.CacheConf) (s
 	// this is telling redis to subscribe to events published in the keyevent channel, specifically for expired events
 	// pubSub := cache.PSubscribe(context.Background(), "__keyevent*__:expired")
 	client := cache.(*redis.ClusterClient)
-	pubSub := client.PSubscribe(context.Background(), "__keyevent*__:expired")
+	idx := 0
+	client.ForEachMaster(context.Background(), func(ctx context.Context, client *redis.Client) error {
+
+		idx++
+		pubSub := client.PSubscribe(ctx, "__keyevent*__:expired")
+
+		pubSubObj := &pubSubObj{
+			pubSub: pubSub,
+			name:   fmt.Sprintf("pubSub-%d", idx),
+		}
+
+		go handleExpiredKeyEvent(pubSubObj)
+		return nil
+	})
 	// this goroutine will listen for the expired events
-	go handleExpiredKeyEvent(pubSub)
 
 	return scheduler
 }
 
-func handleExpiredKeyEvent(pubSub *redis.PubSub) {
+func handleExpiredKeyEvent(pubSubObj *pubSubObj) {
 
 	// infinite loop
 	// this listens in the background for messages.
 	for {
-		message, err := pubSub.ReceiveMessage(context.Background())
+		message, err := pubSubObj.pubSub.ReceiveMessage(context.Background())
 
 		if err != nil {
-			log.Printf("error message - %v", err.Error())
+			log.Printf("[%s] error message - %v", pubSubObj.name, err.Error())
 			continue
 		}
-		log.Printf("Keyspace event recieved %v, %v, %v, %v, %v  \n", message.String(), message.Channel, message.Payload, message.PayloadSlice, message.Pattern)
+		log.Printf("[%s] Keyspace event recieved %v, %v, %v, %v, %v  \n", pubSubObj.name, message.String(), message.Channel, message.Payload, message.PayloadSlice, message.Pattern)
 	}
 }
