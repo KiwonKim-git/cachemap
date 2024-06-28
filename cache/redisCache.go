@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"time"
 
@@ -95,15 +96,22 @@ func (c *CacheRedis) Store(ctx context.Context, key string, value interface{}, e
 	// Otherwise, set the expiration time to 0 to make Cache Scheduler handle the expired keys and values.
 	// And then, set the shadow key with empty value to get expiration event.
 	// This is for the case that the client wants to use pre-process and/or post-process function before and after deletion of expired entries.
+	clusterClient, ok := c.cache.(*redis.ClusterClient)
+	if !ok {
+		err = fmt.Errorf("CacheRedis ERROR - [%s] failed to convert the client to *redis.ClusterClient", c.cacheConfig.Name)
+		// TODO: remove logs
+		log.Println(err)
+		return err
+	}
 	if c.scheduler == nil {
-		err = c.cache.Set(ctx, actualKey, bytes, e.expireAt.Sub(now)).Err()
+		err = clusterClient.Set(ctx, actualKey, bytes, e.expireAt.Sub(now)).Err()
 	} else {
-		err = c.cache.Set(ctx, actualKey, bytes, 0).Err()
+		err = clusterClient.Set(ctx, actualKey, bytes, 0).Err()
 		if err != nil {
 			return err
 		}
 		shadowKey := keyPrefix + ":" + KEY_PREFIX_SHADOW + ":" + key
-		err = c.cache.Set(ctx, shadowKey, "", e.expireAt.Sub(now)).Err()
+		err = clusterClient.Set(ctx, shadowKey, "", e.expireAt.Sub(now)).Err()
 		if err != nil {
 			log.Println("CacheRedis STORE - Failed to store shadow key and it should be deleted manually. Key: ", actualKey)
 		}
@@ -125,10 +133,18 @@ func (c *CacheRedis) Load(ctx context.Context, key string) (value interface{}, r
 	keyPrefix := getRedisKeyPrefix(c.cacheConfig.RedisConf)
 	actualKey := keyPrefix + ":" + key
 
-	return getValueFromRedis(ctx, c.cache, actualKey, c.cacheConfig)
+	clusterClient, ok := c.cache.(*redis.ClusterClient)
+	if !ok {
+		err = fmt.Errorf("CacheRedis ERROR - [%s] failed to convert the client to *redis.ClusterClient", c.cacheConfig.Name)
+		// TODO: remove logs
+		log.Println(err)
+		return nil, schema.ERROR, nil, err
+	}
+
+	return getValueFromRedis(ctx, clusterClient, actualKey, c.cacheConfig)
 }
 
-func getValueFromRedis(ctx context.Context, client redis.UniversalClient, key string, config *schema.CacheConf) (value interface{}, result schema.RESULT, lastUpdated *time.Time, err error) {
+func getValueFromRedis(ctx context.Context, client *redis.ClusterClient, key string, config *schema.CacheConf) (value interface{}, result schema.RESULT, lastUpdated *time.Time, err error) {
 
 	value = nil
 	result = schema.NOT_FOUND

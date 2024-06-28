@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -90,7 +91,14 @@ func (j *redisJob) iterate(key string) {
 		// TODO: remove logs
 		log.Println("[RedisLock][Iterate] Locked:", key)
 
-		value, result, _, err := getValueFromRedis(context.Background(), j.cache, key, j.config)
+		clusterClient, ok := j.cache.(*redis.ClusterClient)
+		if !ok {
+			err := fmt.Errorf("CacheRedis ERROR - [%s] failed to convert the client to *redis.ClusterClient", j.config.Name)
+			log.Println(err)
+			return
+		}
+
+		value, result, _, err := getValueFromRedis(context.Background(), clusterClient, key, j.config)
 
 		if err != nil {
 			log.Println("CacheJob - Failed while getting value from Redis. Error: ", err)
@@ -122,7 +130,12 @@ func (j *redisJob) removeExpiredEntry(key string, value interface{}) bool {
 		log.Printf("CacheJob REMOVE - [%s] removeExpiredEntry key: [%v] \n", j.name, key)
 	}
 
-	j.cache.Del(context.Background(), key)
+	clusterClient, ok := j.cache.(*redis.ClusterClient)
+	if !ok {
+		log.Println("CacheJob - Failed to convert j.cache to *redis.ClusterClient")
+		return false
+	}
+	clusterClient.Del(context.Background(), key)
 
 	if j.config != nil && j.config.SchedulerConf != nil && j.config.SchedulerConf.PostProcess != nil {
 		err := j.config.SchedulerConf.PostProcess(value)
@@ -183,7 +196,9 @@ func getRedisScheduler(cache redis.UniversalClient, config *schema.CacheConf) (s
 	scheduler.cron.Start()
 
 	// this is telling redis to subscribe to events published in the keyevent channel, specifically for expired events
-	pubSub := cache.PSubscribe(context.Background(), "__keyevent@0__:expired")
+	// pubSub := cache.PSubscribe(context.Background(), "__keyevent*__:expired")
+	client := cache.(*redis.ClusterClient)
+	pubSub := client.PSubscribe(context.Background(), "__keyevent*__:expired")
 	// this goroutine will listen for the expired events
 	go handleExpiredKeyEvent(pubSub)
 
@@ -201,6 +216,6 @@ func handleExpiredKeyEvent(pubSub *redis.PubSub) {
 			log.Printf("error message - %v", err.Error())
 			continue
 		}
-		log.Printf("Keyspace event recieved %v  \n", message.String())
+		log.Printf("Keyspace event recieved %v, %v, %v, %v, %v  \n", message.String(), message.Channel, message.Payload, message.PayloadSlice, message.Pattern)
 	}
 }
