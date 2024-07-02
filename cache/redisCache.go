@@ -17,8 +17,8 @@ type CacheRedis struct {
 	scheduler   *redisScheduler
 }
 
-const KEY_PREFIX_SHADOW = "shadow"
-const KEY_PREFIX_EXPIRED = "expired"
+const KEY_PREFIX_SHADOW = "shadow:"
+const KEY_PREFIX_EXPIRED = "expired:"
 
 func NewCacheRedis(config *schema.CacheConf) *CacheRedis {
 
@@ -90,7 +90,7 @@ func (c *CacheRedis) Store(ctx context.Context, key string, value interface{}, e
 	}
 
 	keyPrefix := getRedisKeyPrefix(c.cacheConfig.RedisConf)
-	actualKey := keyPrefix + ":" + key
+	actualKey := keyPrefix + key
 
 	// if the scheduler in CacheRedis is nil, set the expiration time to make Redis handle the expired keys and values.
 	// Otherwise, set the expiration time to 0 to make Cache Scheduler handle the expired keys and values.
@@ -110,7 +110,7 @@ func (c *CacheRedis) Store(ctx context.Context, key string, value interface{}, e
 		if err != nil {
 			return err
 		}
-		shadowKey := keyPrefix + ":" + KEY_PREFIX_SHADOW + ":" + key
+		shadowKey := keyPrefix + KEY_PREFIX_SHADOW + key
 		err = clusterClient.Set(ctx, shadowKey, "", e.ExpireAt.Sub(now)).Err()
 		if err != nil {
 			log.Println("CacheRedis STORE - Failed to store shadow key and it should be deleted manually. Key: ", actualKey)
@@ -130,8 +130,7 @@ func (c *CacheRedis) Store(ctx context.Context, key string, value interface{}, e
 
 func (c *CacheRedis) Load(ctx context.Context, key string) (value interface{}, result schema.RESULT, lastUpdated *time.Time, err error) {
 
-	keyPrefix := getRedisKeyPrefix(c.cacheConfig.RedisConf)
-	actualKey := keyPrefix + ":" + key
+	actualKey := getRedisKeyPrefix(c.cacheConfig.RedisConf) + key
 
 	clusterClient, ok := c.cache.(*redis.ClusterClient)
 	if !ok {
@@ -202,5 +201,5 @@ func getRedisKeyPrefix(config *schema.RedisConf) (prifix string) {
 	if config.Group != "" {
 		prifix += ":" + config.Group
 	}
-	return prifix
+	return prifix + ":"
 }

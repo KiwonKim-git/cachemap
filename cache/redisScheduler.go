@@ -36,7 +36,7 @@ func (j redisJob) Run() {
 	j.handled = 0
 
 	if j.cache != nil {
-		expiredPrefix := KEY_PREFIX_EXPIRED + ":{" + getRedisKeyPrefix(j.config.RedisConf) + ":*"
+		expiredPrefix := KEY_PREFIX_EXPIRED + "{" + getRedisKeyPrefix(j.config.RedisConf) + "*"
 
 		// TODO: remove logs
 		log.Println("CacheJob - expiredPrefix: ", expiredPrefix)
@@ -70,7 +70,7 @@ func (j *redisJob) iterate(expiredKey string) {
 
 	j.increaseTotalExpiredEntry()
 
-	key := strings.Replace(expiredKey, KEY_PREFIX_EXPIRED+":{"+getRedisKeyPrefix(j.config.RedisConf), "", 1)
+	key := strings.Replace(expiredKey, KEY_PREFIX_EXPIRED+"{"+getRedisKeyPrefix(j.config.RedisConf), "", 1)
 	key = strings.Replace(key, "}", "", 1)
 	// TODO: remove logs
 	log.Printf("CacheJob - [%s] existing entries - expiredKey: %v, key: [%v]", j.name, expiredKey, key)
@@ -169,9 +169,9 @@ func (j *redisJob) increaseHandledEntry() (total int) {
 
 func (j *redisJob) handleExpiredEntry(actualKey string) {
 
-	key := strings.Replace(actualKey, getRedisKeyPrefix(j.config.RedisConf)+":", "", 1)
+	key := strings.Replace(actualKey, getRedisKeyPrefix(j.config.RedisConf), "", 1)
 	// To make the expired key have same hash tag, need to add curly braces before and after the actual key
-	expiredKey := KEY_PREFIX_EXPIRED + ":{" + actualKey + "}"
+	expiredKey := KEY_PREFIX_EXPIRED + "{" + actualKey + "}"
 	// TODO: remove logs
 	log.Printf("key: %v, expired key : %v", key, expiredKey)
 
@@ -272,9 +272,9 @@ func getRedisScheduler(cache redis.UniversalClient, config *schema.CacheConf) (s
 			for msg := range ch {
 				// TODO: remove logs
 				log.Printf("[%s] received Keyspace event %v, %v, %v \n", name, msg.String(), msg.Channel, msg.Payload)
-				if strings.HasPrefix(msg.Payload, getRedisKeyPrefix(config.RedisConf)+":"+KEY_PREFIX_SHADOW) {
+				if strings.HasPrefix(msg.Payload, getRedisKeyPrefix(config.RedisConf)+KEY_PREFIX_SHADOW) {
 					// get the actual key from the shadow key
-					actualKey := strings.Replace(msg.Payload, KEY_PREFIX_SHADOW+":", "", 1)
+					actualKey := strings.Replace(msg.Payload, KEY_PREFIX_SHADOW, "", 1)
 					log.Printf("[%s] found shadow key : %v, actual key : %v", name, msg.Payload, actualKey)
 					scheduler.expiredKeyChannel <- actualKey
 				}

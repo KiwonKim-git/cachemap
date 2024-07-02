@@ -53,7 +53,7 @@ func NewRedisLockPool(config *schema.CacheConf) (lockPool *RedisLockPool) {
 
 func (l *RedisLockPool) getLockByKey(key string) (mu *redsync.Mutex, result schema.RESULT) {
 
-	actualKey := getRedisKeyPrefix(l.config.RedisConf) + ":" + key
+	actualKey := getRedisKeyPrefix(l.config.RedisConf) + key
 	v, result, _ := l.keyLocks.Load(actualKey)
 	if result == schema.VALID && v != nil {
 		mu, ok := v.(*redsync.Mutex)
