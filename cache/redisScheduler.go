@@ -39,7 +39,7 @@ func (j redisJob) Run() {
 		expiredPrefix := KEY_PREFIX_EXPIRED + ":{" + getRedisKeyPrefix(j.config.RedisConf) + ":*"
 
 		// TODO: remove logs
-		log.Panicln("CacheJob - expiredPrefix: ", expiredPrefix)
+		log.Println("CacheJob - expiredPrefix: ", expiredPrefix)
 
 		clusterClient, ok := j.cache.(*redis.ClusterClient)
 		if !ok {
