@@ -51,9 +51,8 @@ func NewRedisLockPool(config *schema.CacheConf) (lockPool *RedisLockPool) {
 	}
 }
 
-func (l *RedisLockPool) getLockByKey(key string) (mu *redsync.Mutex, result schema.RESULT) {
+func (l *RedisLockPool) getLockByKey(actualKey string) (mu *redsync.Mutex, result schema.RESULT) {
 
-	actualKey := getRedisKeyPrefix(l.config.RedisConf) + key
 	v, result, _ := l.keyLocks.Load(actualKey)
 	if result == schema.VALID && v != nil {
 		mu, ok := v.(*redsync.Mutex)
@@ -69,32 +68,87 @@ func (l *RedisLockPool) getLockByKey(key string) (mu *redsync.Mutex, result sche
 
 // Obtain a lock for given key. After this is successful, no one else can obtain the same lock (the same mutex name) until it is unlocked.
 func (l *RedisLockPool) Lock(key string) (err error) {
-	mu, _ := l.getLockByKey(key)
-	return mu.Lock()
+	actualKey := getRedisKeyPrefix(l.config.RedisConf) + key
+	return l.lock(actualKey)
+}
+
+func (l *RedisLockPool) lock(actualKey string) (err error) {
+	mu, _ := l.getLockByKey(actualKey)
+
+	// TODO: remove logs
+	log.Printf("[RedisLock] Lock: [%s]", actualKey)
+	err = mu.Lock()
+	if err == nil {
+		log.Printf("[RedisLock] Locked: [%s]", actualKey)
+	} else {
+		log.Printf("[RedisLock] Error while Lock: [%s], error : %v", actualKey, err)
+	}
+	return err
+	///////////////////
+
+	//return mu.Lock()
 }
 
 // Obtain a lock for given key. After this is successful, no one else can obtain the same lock (the same mutex name) until it is unlocked.
 // And also TryLock only attempts to lock m once and returns immediately regardless of success or failure without retrying.
 func (l *RedisLockPool) TryLock(key string) (err error) {
-	mu, _ := l.getLockByKey(key)
-	return mu.TryLock()
+	actualKey := getRedisKeyPrefix(l.config.RedisConf) + key
+	return l.tryLock(actualKey)
+}
+
+func (l *RedisLockPool) tryLock(actualKey string) (err error) {
+	mu, _ := l.getLockByKey(actualKey)
+
+	// TODO: remove logs
+	log.Printf("[RedisLock] Try Lock: [%s]", actualKey)
+	err = mu.TryLock()
+	if err == nil {
+		log.Printf("[RedisLock] Locked: [%s]", actualKey)
+	} else {
+		log.Printf("[RedisLock] Error while Try Lock: [%s], error : %v", actualKey, err)
+	}
+	return err
+	///////////////////
+
+	//return mu.TryLock()
 }
 
 // Release the lock and then other processes or threads can obtain a lock. Ok will represent the status of unlocking.
 func (l *RedisLockPool) Unlock(key string) (ok bool, err error) {
 
+	actualKey := getRedisKeyPrefix(l.config.RedisConf) + key
+	return l.unlock(actualKey)
+}
+
+func (l *RedisLockPool) unlock(actualKey string) (ok bool, err error) {
+
 	ok = false
 	err = nil
 
-	mu, result := l.getLockByKey(key)
+	mu, result := l.getLockByKey(actualKey)
+
+	// TODO: remove logs
+	log.Printf("[RedisLock] Unlock: [%s]", actualKey)
+	//////////////
 	if result == schema.VALID {
-		return mu.Unlock()
+		ok, err = mu.Unlock()
+		if ok {
+			// TODO: remove logs
+			log.Printf("[RedisLock] Unlocked: [%s]", actualKey)
+			//////////////////
+		} else {
+			if err != nil {
+				log.Printf("[RedisLock] Unlock - Error while Unlock. key: [%s] error: %v", actualKey, err)
+			} else {
+				log.Println("[RedisLock] Unlock - Unlock failed without error")
+			}
+		}
 	} else if result == schema.NOT_FOUND {
-		err = fmt.Errorf("Unlock - [%s] does not exist but unlock is requested", key)
+		err = fmt.Errorf("[RedisLock] Unlock - [%s] does not exist but unlock is requested", actualKey)
 	} else if result == schema.EXPIRED {
-		err = fmt.Errorf("Unlock - [%s] is expired but unlock is requested", key)
+		err = fmt.Errorf("[RedisLock] Unlock - [%s] is expired but unlock is requested", actualKey)
 	} else {
-		err = fmt.Errorf("Unlock - [%s] is in error state but unlock is requested", key)
+		err = fmt.Errorf("[RedisLock] Unlock - [%s] is in error state but unlock is requested", actualKey)
 	}
 	return ok, err
 }

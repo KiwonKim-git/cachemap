@@ -107,25 +107,22 @@ func (c *CacheRedis) Store(ctx context.Context, key string, value interface{}, e
 		err = clusterClient.Set(ctx, actualKey, bytes, e.ExpireAt.Sub(now)).Err()
 	} else {
 		err = clusterClient.Set(ctx, actualKey, bytes, 0).Err()
-		if err != nil {
-			return err
-		}
-		shadowKey := keyPrefix + KEY_PREFIX_SHADOW + key
-		err = clusterClient.Set(ctx, shadowKey, "", e.ExpireAt.Sub(now)).Err()
-		if err != nil {
-			log.Println("CacheRedis STORE - Failed to store shadow key and it should be deleted manually. Key: ", actualKey)
+		if err == nil {
+			shadowKey := keyPrefix + KEY_PREFIX_SHADOW + key
+			err = clusterClient.Set(ctx, shadowKey, "", e.ExpireAt.Sub(now)).Err()
+			if err != nil {
+				log.Println("CacheRedis STORE - Failed to store shadow key and it should be deleted manually. Key: ", actualKey)
+				// ignore error while storing shadow key
+				err = nil
+			}
 		}
 	}
-	if err != nil {
-		return err
-	}
-
-	if c.cacheConfig.Verbose {
+	if err == nil && c.cacheConfig.Verbose {
 		loc := time.FixedZone("KST", 9*60*60)
 		log.Printf("CacheRedis STORE - [%s] stored the key [%s] (actual: %s) at [%s] and it will be expired at [%s] with randomizedTime: [%s], element: [%s]",
 			c.cacheConfig.Name, key, actualKey, e.LastUpdated.In(loc).Format(time.RFC3339), e.ExpireAt.In(loc).Format(time.RFC3339), time.Duration(randomizedTime).String(), string(bytes))
 	}
-	return nil
+	return err
 }
 
 func (c *CacheRedis) Load(ctx context.Context, key string) (value interface{}, result schema.RESULT, lastUpdated *time.Time, err error) {
@@ -135,11 +132,8 @@ func (c *CacheRedis) Load(ctx context.Context, key string) (value interface{}, r
 	clusterClient, ok := c.cache.(*redis.ClusterClient)
 	if !ok {
 		err = fmt.Errorf("CacheRedis ERROR - [%s] failed to convert the client to *redis.ClusterClient", c.cacheConfig.Name)
-		// TODO: remove logs
-		log.Println(err)
 		return nil, schema.ERROR, nil, err
 	}
-
 	return getValueFromRedis(ctx, clusterClient, actualKey, c.cacheConfig)
 }
 
@@ -151,8 +145,6 @@ func getValueFromRedis(ctx context.Context, client *redis.ClusterClient, key str
 	err = nil
 
 	bytes, err := client.Get(ctx, key).Bytes()
-	//TODO: remove logs
-	log.Println(string(bytes))
 
 	if err != nil {
 		if err == redis.Nil {

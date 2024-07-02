@@ -70,35 +70,15 @@ func (j *redisJob) iterate(expiredKey string) {
 
 	j.increaseTotalExpiredEntry()
 
-	key := strings.Replace(expiredKey, KEY_PREFIX_EXPIRED+"{"+getRedisKeyPrefix(j.config.RedisConf), "", 1)
-	key = strings.Replace(key, "}", "", 1)
+	actualKey := strings.Replace(expiredKey, KEY_PREFIX_EXPIRED+"{", "", 1)
+	actualKey = strings.Replace(actualKey, "}", "", 1)
 	// TODO: remove logs
-	log.Printf("CacheJob - [%s] existing entries - expiredKey: [%v], key: [%v]", j.name, expiredKey, key)
+	log.Printf("CacheJob - [%s] existing entries - expiredKey: [%v], actual key: [%v]", j.name, expiredKey, actualKey)
 
-	// TODO: remove logs
-	log.Printf("[RedisLock][Iterate] Try Lock: [%s]", key)
-	lockError := j.keyLock.TryLock(key)
-	defer func() {
-		if lockError == nil {
-			log.Printf("[RedisLock][Iterate] Try Unlock: [%s]", key)
-			ok, err := j.keyLock.Unlock(key)
-			if ok {
-				log.Printf("[RedisLock][Iterate] Unlocked: [%s]", key)
-			} else {
-				if err != nil {
-					log.Println("[RedisLock][Iterate] Error while Unlock. error: ", err)
-				} else {
-					log.Println("[RedisLock][Iterate] Unlock failed without error")
-				}
-			}
-		}
-	}()
-	//////////////////////////////////
+	lockError := j.keyLock.tryLock(actualKey)
+	defer j.keyLock.unlock(actualKey)
 
 	if lockError == nil {
-		// TODO: remove logs
-		log.Printf("[RedisLock][Iterate] Locked: [%s]", key)
-
 		clusterClient, ok := j.cache.(*redis.ClusterClient)
 		if !ok {
 			err := fmt.Errorf("CacheRedis ERROR - [%s] failed to convert the client to *redis.ClusterClient", j.config.Name)
@@ -111,12 +91,12 @@ func (j *redisJob) iterate(expiredKey string) {
 		if err != nil {
 			log.Println("CacheJob - Failed while getting value from Redis. Error: ", err)
 		} else if result == schema.EXPIRED && value != nil {
-			j.removeExpiredEntry(key, value)
+			j.removeExpiredEntry(expiredKey, value)
 		} else if value != nil {
-			log.Printf("CacheJob - the [%s] key is not expired yet (status : %v) but, why is this key moved to EXPIRED namespace? anyway remove it.", key, result.String())
-			j.removeExpiredEntry(key, value)
+			log.Printf("CacheJob - the [%s] actual key is not expired yet (status : %v) but, why is this key moved to EXPIRED namespace? anyway remove it.", actualKey, result.String())
+			j.removeExpiredEntry(expiredKey, value)
 		} else {
-			log.Printf("CacheJob - Why is the [%s] key moved to EXPIRED namespace? expired key : [%s]", key, expiredKey)
+			log.Printf("CacheJob - Why is the [%s] actual key moved to EXPIRED namespace? expired key : [%s]", actualKey, expiredKey)
 		}
 	} else {
 		log.Println("[RedisLock][Iterate] Failed while locking the key. Skip to next expired key. Error: ", lockError)
@@ -169,34 +149,15 @@ func (j *redisJob) increaseHandledEntry() (total int) {
 
 func (j *redisJob) handleExpiredEntry(actualKey string) {
 
-	key := strings.Replace(actualKey, getRedisKeyPrefix(j.config.RedisConf), "", 1)
 	// To make the expired key have same hash tag, need to add curly braces before and after the actual key
 	expiredKey := KEY_PREFIX_EXPIRED + "{" + actualKey + "}"
 	// TODO: remove logs
-	log.Printf("key: %v, expired key : %v", key, expiredKey)
+	log.Printf("actual key: %v, expired key : %v", actualKey, expiredKey)
 
-	lockError := j.keyLock.TryLock(key)
-	defer func() {
-		if lockError == nil {
-			log.Printf("[RedisLock][handleExpiredEntry] Try Unlock: [%s]", key)
-			ok, err := j.keyLock.Unlock(key)
-			if ok {
-				log.Printf("[RedisLock][handleExpiredEntry] Unlocked: [%s]", key)
-			} else {
-				if err != nil {
-					log.Println("[RedisLock][handleExpiredEntry] Error while Unlock. error: ", err)
-				} else {
-					log.Println("[RedisLock][handleExpiredEntry] Unlock failed without error")
-				}
-			}
-		}
-	}()
-	//////////////////////////////////
+	lockError := j.keyLock.tryLock(actualKey)
+	defer j.keyLock.unlock(actualKey)
 
 	if lockError == nil {
-		// TODO: remove logs
-		log.Printf("[RedisLock][handleExpiredEntry] Locked:[%s]", key)
-
 		result, err := j.cache.Rename(context.Background(), actualKey, expiredKey).Result()
 		if err != nil {
 			log.Printf("Failed to rename key [%v] to [%v]. Error: %v \n", actualKey, expiredKey, err)
