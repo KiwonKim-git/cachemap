@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"fmt"
 	"time"
 )
 
@@ -12,6 +13,20 @@ const (
 	NOT_FOUND
 	ERROR
 )
+
+func (r RESULT) String() string {
+	switch r {
+	case VALID:
+		return "VALID"
+	case EXPIRED:
+		return "EXPIRED"
+	case NOT_FOUND:
+		return "NOT_FOUND"
+	case ERROR:
+		return "ERROR"
+	}
+	return fmt.Sprintf("%d", int(r))
+}
 
 type CacheConf struct {
 	// True if the cache should print more logs for debugging purpose

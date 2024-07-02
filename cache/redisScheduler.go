@@ -39,7 +39,7 @@ func (j redisJob) Run() {
 		expiredPrefix := KEY_PREFIX_EXPIRED + "{" + getRedisKeyPrefix(j.config.RedisConf) + "*"
 
 		// TODO: remove logs
-		log.Println("CacheJob - expiredPrefix: ", expiredPrefix)
+		log.Printf("CacheJob - expiredPrefix: [%s]", expiredPrefix)
 
 		clusterClient, ok := j.cache.(*redis.ClusterClient)
 		if !ok {
@@ -73,17 +73,17 @@ func (j *redisJob) iterate(expiredKey string) {
 	key := strings.Replace(expiredKey, KEY_PREFIX_EXPIRED+"{"+getRedisKeyPrefix(j.config.RedisConf), "", 1)
 	key = strings.Replace(key, "}", "", 1)
 	// TODO: remove logs
-	log.Printf("CacheJob - [%s] existing entries - expiredKey: %v, key: [%v]", j.name, expiredKey, key)
+	log.Printf("CacheJob - [%s] existing entries - expiredKey: [%v], key: [%v]", j.name, expiredKey, key)
 
 	// TODO: remove logs
-	log.Println("[RedisLock][Iterate] Try Lock: ", key)
+	log.Printf("[RedisLock][Iterate] Try Lock: [%s]", key)
 	lockError := j.keyLock.TryLock(key)
 	defer func() {
 		if lockError == nil {
-			log.Println("[RedisLock][Iterate] Try Unlock: ", key)
+			log.Printf("[RedisLock][Iterate] Try Unlock: [%s]", key)
 			ok, err := j.keyLock.Unlock(key)
 			if ok {
-				log.Println("[RedisLock][Iterate] Unlocked: ", key)
+				log.Printf("[RedisLock][Iterate] Unlocked: [%s]", key)
 			} else {
 				if err != nil {
 					log.Println("[RedisLock][Iterate] Error while Unlock. error: ", err)
@@ -97,7 +97,7 @@ func (j *redisJob) iterate(expiredKey string) {
 
 	if lockError == nil {
 		// TODO: remove logs
-		log.Println("[RedisLock][Iterate] Locked:", key)
+		log.Printf("[RedisLock][Iterate] Locked: [%s]", key)
 
 		clusterClient, ok := j.cache.(*redis.ClusterClient)
 		if !ok {
@@ -106,17 +106,17 @@ func (j *redisJob) iterate(expiredKey string) {
 			return
 		}
 
-		value, result, _, err := getValueFromRedis(context.Background(), clusterClient, key, j.config)
+		value, result, _, err := getValueFromRedis(context.Background(), clusterClient, expiredKey, j.config)
 
 		if err != nil {
 			log.Println("CacheJob - Failed while getting value from Redis. Error: ", err)
 		} else if result == schema.EXPIRED && value != nil {
 			j.removeExpiredEntry(key, value)
 		} else if value != nil {
-			log.Printf("CacheJob - the [%s] key is not expired yet (status : %v) but, why is this key moved to EXPIRED namespace? anyway remove it.", key, result)
+			log.Printf("CacheJob - the [%s] key is not expired yet (status : %v) but, why is this key moved to EXPIRED namespace? anyway remove it.", key, result.String())
 			j.removeExpiredEntry(key, value)
 		} else {
-			log.Printf("CacheJob - Why is the [%s] key moved to EXPIRED namespace?", key)
+			log.Printf("CacheJob - Why is the [%s] key moved to EXPIRED namespace? expired key : [%s]", key, expiredKey)
 		}
 	} else {
 		log.Println("[RedisLock][Iterate] Failed while locking the key. Skip to next expired key. Error: ", lockError)
@@ -178,10 +178,10 @@ func (j *redisJob) handleExpiredEntry(actualKey string) {
 	lockError := j.keyLock.TryLock(key)
 	defer func() {
 		if lockError == nil {
-			log.Println("[RedisLock][handleExpiredEntry] Try Unlock: ", key)
+			log.Printf("[RedisLock][handleExpiredEntry] Try Unlock: [%s]", key)
 			ok, err := j.keyLock.Unlock(key)
 			if ok {
-				log.Println("[RedisLock][handleExpiredEntry] Unlocked: ", key)
+				log.Printf("[RedisLock][handleExpiredEntry] Unlocked: [%s]", key)
 			} else {
 				if err != nil {
 					log.Println("[RedisLock][handleExpiredEntry] Error while Unlock. error: ", err)
@@ -195,13 +195,13 @@ func (j *redisJob) handleExpiredEntry(actualKey string) {
 
 	if lockError == nil {
 		// TODO: remove logs
-		log.Println("[RedisLock][handleExpiredEntry] Locked:", key)
+		log.Printf("[RedisLock][handleExpiredEntry] Locked:[%s]", key)
 
 		result, err := j.cache.Rename(context.Background(), actualKey, expiredKey).Result()
 		if err != nil {
-			log.Printf("Failed to rename key %v to %v. Error: %v \n", actualKey, expiredKey, err)
+			log.Printf("Failed to rename key [%v] to [%v]. Error: %v \n", actualKey, expiredKey, err)
 		} else if j.config.Verbose {
-			log.Printf("Renamed key %v to %v. Result: %v \n", actualKey, expiredKey, result)
+			log.Printf("Renamed key [%v] to [%v]. Result: %v \n", actualKey, expiredKey, result)
 		}
 	} else {
 		log.Println("[RedisLock][handleExpiredEntry] Failed while locking the key. Skip to next expired key. Error: ", lockError)
