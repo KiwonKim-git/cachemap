@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/KiwonKim-git/cachemap/schema"
@@ -12,8 +13,9 @@ import (
 )
 
 type redisScheduler struct {
-	cron *cron.Cron
-	job  redisJob
+	cron              *cron.Cron
+	job               redisJob
+	expiredKeyChannel chan string
 }
 
 type redisJob struct {
@@ -25,11 +27,6 @@ type redisJob struct {
 	keyLock      *RedisLockPool
 }
 
-type pubSubObj struct {
-	pubSub *redis.PubSub
-	name   string
-}
-
 func (j redisJob) Run() {
 
 	loc := time.FixedZone("KST", 9*60*60)
@@ -39,7 +36,10 @@ func (j redisJob) Run() {
 	j.handled = 0
 
 	if j.cache != nil {
-		expiredPrefix := getRedisKeyPrefix(j.config.RedisConf) + ":" + KEY_PREFIX_EXPIRED + ":*"
+		expiredPrefix := KEY_PREFIX_EXPIRED + ":{" + getRedisKeyPrefix(j.config.RedisConf) + ":*"
+
+		// TODO: remove logs
+		log.Panicln("CacheJob - expiredPrefix: ", expiredPrefix)
 
 		clusterClient, ok := j.cache.(*redis.ClusterClient)
 		if !ok {
@@ -164,6 +164,47 @@ func (j *redisJob) increaseHandledEntry() (total int) {
 	return j.handled
 }
 
+func (j *redisJob) handleExpiredEntry(actualKey string) {
+
+	key := strings.Replace(actualKey, getRedisKeyPrefix(j.config.RedisConf)+":", "", 1)
+	// To make the expired key have same hash tag, need to add curly braces before and after the actual key
+	expiredKey := KEY_PREFIX_EXPIRED + ":{" + actualKey + "}"
+	// TODO: remove logs
+	log.Printf("key: %v, expired key : %v", key, expiredKey)
+
+	lockError := j.keyLock.TryLock(key)
+	defer func() {
+		if lockError != nil {
+			log.Println("[RedisLock][handleExpiredEntry] Try Unlock: ", key)
+			ok, err := j.keyLock.Unlock(key)
+			if ok {
+				log.Println("[RedisLock][handleExpiredEntry] Unlocked: ", key)
+			} else {
+				if err != nil {
+					log.Println("[RedisLock][handleExpiredEntry] Error while Unlock. error: ", err)
+				} else {
+					log.Println("[RedisLock][handleExpiredEntry] Unlock failed without error")
+				}
+			}
+		}
+	}()
+	//////////////////////////////////
+
+	if lockError == nil {
+		// TODO: remove logs
+		log.Println("[RedisLock][handleExpiredEntry] Locked:", key)
+
+		result, err := j.cache.Rename(context.Background(), actualKey, expiredKey).Result()
+		if err != nil {
+			log.Printf("Failed to rename key %v to %v. Error: %v \n", actualKey, expiredKey, err)
+		} else if j.config.Verbose {
+			log.Printf("Renamed key %v to %v. Result: %v \n", actualKey, expiredKey, result)
+		}
+	} else {
+		log.Println("[RedisLock][handleExpiredEntry] Failed while locking the key. Skip to next expired key. Error: ", lockError)
+	}
+}
+
 func getRedisScheduler(cache redis.UniversalClient, config *schema.CacheConf) (scheduler *redisScheduler) {
 	if config == nil || config.SchedulerConf == nil {
 		return nil
@@ -200,39 +241,44 @@ func getRedisScheduler(cache redis.UniversalClient, config *schema.CacheConf) (s
 	scheduler.cron.AddJob(config.SchedulerConf.CronExprForScheduler, scheduler.job)
 	scheduler.cron.Start()
 
+	scheduler.expiredKeyChannel = make(chan string)
+	go func() {
+		for actualKey := range scheduler.expiredKeyChannel {
+			scheduler.job.handleExpiredEntry(actualKey)
+		}
+	}()
+
 	// this is telling redis to subscribe to events published in the keyevent channel, specifically for expired events
 	// pubSub := cache.PSubscribe(context.Background(), "__keyevent*__:expired")
-	client := cache.(*redis.ClusterClient)
-	idx := 0
-	client.ForEachMaster(context.Background(), func(ctx context.Context, client *redis.Client) error {
+	clusterClient := cache.(*redis.ClusterClient)
+	clusterClient.ForEachMaster(context.Background(), func(ctx context.Context, client *redis.Client) error {
 
-		idx++
 		pubSub := client.PSubscribe(ctx, "__keyevent*__:expired")
-
-		pubSubObj := &pubSubObj{
-			pubSub: pubSub,
-			name:   fmt.Sprintf("pubSub-%d", idx),
+		id, err := client.ClientID(ctx).Result()
+		if err != nil {
+			log.Printf("Failed to get client id. Error: %v", err)
+			return err
 		}
 
-		go handleExpiredKeyEvent(pubSubObj)
+		name := fmt.Sprintf("pubSub-%d", id)
+		ch := pubSub.Channel()
+
+		go func() {
+			// infinite loop
+			// this listens in the background for messages.
+			for msg := range ch {
+				// TODO: remove logs
+				log.Printf("[%s] received Keyspace event %v, %v, %v \n", name, msg.String(), msg.Channel, msg.Payload)
+				if strings.HasPrefix(msg.Payload, getRedisKeyPrefix(config.RedisConf)+":"+KEY_PREFIX_SHADOW) {
+					// get the actual key from the shadow key
+					actualKey := strings.Replace(msg.Payload, KEY_PREFIX_SHADOW+":", "", 1)
+					log.Printf("[%s] found shadow key : %v, actual key : %v", name, msg.Payload, actualKey)
+					scheduler.expiredKeyChannel <- actualKey
+				}
+			}
+		}()
+
 		return nil
 	})
-	// this goroutine will listen for the expired events
-
 	return scheduler
-}
-
-func handleExpiredKeyEvent(pubSubObj *pubSubObj) {
-
-	// infinite loop
-	// this listens in the background for messages.
-	for {
-		message, err := pubSubObj.pubSub.ReceiveMessage(context.Background())
-
-		if err != nil {
-			log.Printf("[%s] error message - %v", pubSubObj.name, err.Error())
-			continue
-		}
-		log.Printf("[%s] Keyspace event recieved %v, %v, %v, %v, %v  \n", pubSubObj.name, message.String(), message.Channel, message.Payload, message.PayloadSlice, message.Pattern)
-	}
 }
