@@ -50,12 +50,12 @@ func (j *mapJob) removeExpiredEntry(key, value interface{}) bool {
 
 	if !ok {
 		log.Println("Failed while converting from interface{} to the cache element. Key: ", key)
-	} else if now.After(element.expireAt) {
+	} else if now.After(element.ExpireAt) {
 
 		j.increaseExpiredEntry()
 
 		if j.config != nil && j.config.SchedulerConf != nil && j.config.SchedulerConf.PreProcess != nil {
-			err := j.config.SchedulerConf.PreProcess(element.value)
+			err := j.config.SchedulerConf.PreProcess(element.Value)
 			if err != nil {
 				log.Println("Failed while pre-processing before deletion of the element. Error: ", err)
 			}
@@ -63,13 +63,13 @@ func (j *mapJob) removeExpiredEntry(key, value interface{}) bool {
 
 		if j.config.Verbose {
 			loc := time.FixedZone("KST", 9*60*60)
-			log.Printf("CacheJob REMOVE - [%s] removeExpiredEntry key: [%v] expired at [%s] \n", j.name, key, element.expireAt.In(loc).Format(time.RFC3339))
+			log.Printf("CacheJob REMOVE - [%s] removeExpiredEntry key: [%v] expired at [%s] \n", j.name, key, element.ExpireAt.In(loc).Format(time.RFC3339))
 		}
 
 		j.cache.Delete(key)
 
 		if j.config != nil && j.config.SchedulerConf != nil && j.config.SchedulerConf.PostProcess != nil {
-			err := j.config.SchedulerConf.PostProcess(element.value)
+			err := j.config.SchedulerConf.PostProcess(element.Value)
 			if err != nil {
 				log.Println("Failed while post-processing after deletion of the element. Error: ", err)
 			}

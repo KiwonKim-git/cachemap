@@ -59,24 +59,24 @@ func (c *CacheMap) Store(key interface{}, value interface{}, expireAt *time.Time
 	randomizedTime := int64(0)
 	now := time.Now()
 	if expireAt != nil && expireAt.After(now) {
-		e.expireAt = *expireAt
+		e.ExpireAt = *expireAt
 	} else {
 		if c.cacheConfig.RandomizedDuration {
 			randomizedTime = int64((now.UnixNano() % 25) * int64(c.cacheConfig.CacheDuration) / 100)
-			e.expireAt = now.Add(time.Duration(randomizedTime)).Add(c.cacheConfig.CacheDuration)
+			e.ExpireAt = now.Add(time.Duration(randomizedTime)).Add(c.cacheConfig.CacheDuration)
 		} else {
-			e.expireAt = now.Add(c.cacheConfig.CacheDuration)
+			e.ExpireAt = now.Add(c.cacheConfig.CacheDuration)
 		}
 	}
-	e.lastUpdated = now
-	e.value = value
+	e.LastUpdated = now
+	e.Value = value
 
 	c.cache.Store(key, e)
 
 	if c.cacheConfig.Verbose {
 		loc := time.FixedZone("KST", 9*60*60)
 		log.Printf("CacheMap STORE - [%s] stored the key [%v] at [%s] and it will be expired at [%s] with randomizedTime: [%s]",
-			c.cacheConfig.Name, key, e.lastUpdated.In(loc).Format(time.RFC3339), e.expireAt.In(loc).Format(time.RFC3339), time.Duration(randomizedTime).String())
+			c.cacheConfig.Name, key, e.LastUpdated.In(loc).Format(time.RFC3339), e.ExpireAt.In(loc).Format(time.RFC3339), time.Duration(randomizedTime).String())
 	}
 }
 
@@ -91,11 +91,11 @@ func (c *CacheMap) Load(key interface{}) (value interface{}, result schema.RESUL
 	if ok && v != nil {
 
 		e, ok := v.(elementForCache)
-		value = e.value
-		lastUpdated = &e.lastUpdated
+		value = e.Value
+		lastUpdated = &e.LastUpdated
 
 		now := time.Now()
-		if ok && now.Before(e.expireAt) {
+		if ok && now.Before(e.ExpireAt) {
 			if c.cacheConfig.Verbose {
 				log.Printf("CacheMap LOAD - [%s] loaded the key: [%v]", c.cacheConfig.Name, key)
 			}
@@ -104,7 +104,7 @@ func (c *CacheMap) Load(key interface{}) (value interface{}, result schema.RESUL
 			if c.cacheConfig.Verbose {
 				loc := time.FixedZone("KST", 9*60*60)
 				log.Printf("CacheMap EXPIRED - [%s] has the key [%v] but, it was expired and/or the data is invaild, ok : [%t], now() : [%s], expired at : [%s]",
-					c.cacheConfig.Name, key, ok, now.In(loc).Format(time.RFC3339), e.expireAt.In(loc).Format(time.RFC3339))
+					c.cacheConfig.Name, key, ok, now.In(loc).Format(time.RFC3339), e.ExpireAt.In(loc).Format(time.RFC3339))
 			}
 			result = schema.EXPIRED
 		}

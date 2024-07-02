@@ -72,17 +72,17 @@ func (c *CacheRedis) Store(ctx context.Context, key string, value interface{}, e
 	randomizedTime := int64(0)
 	now := time.Now()
 	if expireAt != nil && expireAt.After(now) {
-		e.expireAt = *expireAt
+		e.ExpireAt = *expireAt
 	} else {
 		if c.cacheConfig.RandomizedDuration {
 			randomizedTime = int64((now.UnixNano() % 25) * int64(c.cacheConfig.CacheDuration) / 100)
-			e.expireAt = now.Add(time.Duration(randomizedTime)).Add(c.cacheConfig.CacheDuration)
+			e.ExpireAt = now.Add(time.Duration(randomizedTime)).Add(c.cacheConfig.CacheDuration)
 		} else {
-			e.expireAt = now.Add(c.cacheConfig.CacheDuration)
+			e.ExpireAt = now.Add(c.cacheConfig.CacheDuration)
 		}
 	}
-	e.lastUpdated = now
-	e.value = value
+	e.LastUpdated = now
+	e.Value = value
 
 	bytes, err := json.Marshal(e)
 	if err != nil {
@@ -104,14 +104,14 @@ func (c *CacheRedis) Store(ctx context.Context, key string, value interface{}, e
 		return err
 	}
 	if c.scheduler == nil {
-		err = clusterClient.Set(ctx, actualKey, bytes, e.expireAt.Sub(now)).Err()
+		err = clusterClient.Set(ctx, actualKey, bytes, e.ExpireAt.Sub(now)).Err()
 	} else {
 		err = clusterClient.Set(ctx, actualKey, bytes, 0).Err()
 		if err != nil {
 			return err
 		}
 		shadowKey := keyPrefix + ":" + KEY_PREFIX_SHADOW + ":" + key
-		err = clusterClient.Set(ctx, shadowKey, "", e.expireAt.Sub(now)).Err()
+		err = clusterClient.Set(ctx, shadowKey, "", e.ExpireAt.Sub(now)).Err()
 		if err != nil {
 			log.Println("CacheRedis STORE - Failed to store shadow key and it should be deleted manually. Key: ", actualKey)
 		}
@@ -123,7 +123,7 @@ func (c *CacheRedis) Store(ctx context.Context, key string, value interface{}, e
 	if c.cacheConfig.Verbose {
 		loc := time.FixedZone("KST", 9*60*60)
 		log.Printf("CacheRedis STORE - [%s] stored the key [%s] (actual: %s) at [%s] and it will be expired at [%s] with randomizedTime: [%s], element: [%s]",
-			c.cacheConfig.Name, key, actualKey, e.lastUpdated.In(loc).Format(time.RFC3339), e.expireAt.In(loc).Format(time.RFC3339), time.Duration(randomizedTime).String(), string(bytes))
+			c.cacheConfig.Name, key, actualKey, e.LastUpdated.In(loc).Format(time.RFC3339), e.ExpireAt.In(loc).Format(time.RFC3339), time.Duration(randomizedTime).String(), string(bytes))
 	}
 	return nil
 }
@@ -152,6 +152,8 @@ func getValueFromRedis(ctx context.Context, client *redis.ClusterClient, key str
 	err = nil
 
 	bytes, err := client.Get(ctx, key).Bytes()
+	//TODO: remove logs
+	log.Println(string(bytes))
 
 	if err != nil {
 		if err == redis.Nil {
@@ -170,11 +172,11 @@ func getValueFromRedis(ctx context.Context, client *redis.ClusterClient, key str
 		if err != nil {
 			log.Printf("CacheRedis ERROR - [%s] has error while it unmarshal the value of the key [%s] from Redis server, error: [%v]", config.Name, key, err)
 		} else {
-			value = e.value
-			lastUpdated = &e.lastUpdated
+			value = e.Value
+			lastUpdated = &e.LastUpdated
 			now := time.Now()
 
-			if now.Before(e.expireAt) {
+			if now.Before(e.ExpireAt) {
 				if config.Verbose {
 					log.Printf("CacheRedis LOAD - [%s] loaded the key: [%s]", config.Name, key)
 				}
@@ -182,8 +184,8 @@ func getValueFromRedis(ctx context.Context, client *redis.ClusterClient, key str
 			} else {
 				if config.Verbose {
 					loc := time.FixedZone("KST", 9*60*60)
-					log.Printf("CacheRedis EXPIRED - [%s] has the key [%v] but, it was expired now(): [%s], expired at: [%s]",
-						config.Name, key, now.In(loc).Format(time.RFC3339), e.expireAt.In(loc).Format(time.RFC3339))
+					log.Printf("CacheRedis EXPIRED - [%s] has the key [%v] but, it was expired now [%s], expired at: [%s]",
+						config.Name, key, now.In(loc).Format(time.RFC3339), e.ExpireAt.In(loc).Format(time.RFC3339))
 				}
 				result = schema.EXPIRED
 			}

@@ -66,17 +66,20 @@ func (j redisJob) Run() {
 	log.Printf("CacheJob - [%s] runs at [%s], TotalExpired: [%d], Handled: [%d]", j.name, now.In(loc).Format(time.RFC3339), j.totalExpired, j.handled)
 }
 
-func (j *redisJob) iterate(key string) {
+func (j *redisJob) iterate(expiredKey string) {
 
 	j.increaseTotalExpiredEntry()
+
+	key := strings.Replace(expiredKey, KEY_PREFIX_EXPIRED+":{"+getRedisKeyPrefix(j.config.RedisConf), "", 1)
+	key = strings.Replace(key, "}", "", 1)
 	// TODO: remove logs
-	log.Printf("CacheJob - [%s] existing entries - key: [%v]", j.name, key)
+	log.Printf("CacheJob - [%s] existing entries - expiredKey: %v, key: [%v]", j.name, expiredKey, key)
 
 	// TODO: remove logs
 	log.Println("[RedisLock][Iterate] Try Lock: ", key)
 	lockError := j.keyLock.TryLock(key)
 	defer func() {
-		if lockError != nil {
+		if lockError == nil {
 			log.Println("[RedisLock][Iterate] Try Unlock: ", key)
 			ok, err := j.keyLock.Unlock(key)
 			if ok {
@@ -174,7 +177,7 @@ func (j *redisJob) handleExpiredEntry(actualKey string) {
 
 	lockError := j.keyLock.TryLock(key)
 	defer func() {
-		if lockError != nil {
+		if lockError == nil {
 			log.Println("[RedisLock][handleExpiredEntry] Try Unlock: ", key)
 			ok, err := j.keyLock.Unlock(key)
 			if ok {

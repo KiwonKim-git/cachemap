@@ -9,11 +9,11 @@ import (
 // struct to store any element in map
 type elementForCache struct {
 	// Entry in cache will be expired at this time
-	expireAt time.Time
+	ExpireAt time.Time `json:"expireAt"`
 	// Last updated time of the entry in cache
-	lastUpdated time.Time
-	// Actual value in cache
-	value interface{}
+	LastUpdated time.Time `json:"lastUpdated"`
+	// Actual Value in cache
+	Value interface{} `json:"value"`
 }
 
 func getSchedulerConfig(cacheConf *schema.CacheConf) (schedulerConf *schema.SchedulerConf) {
