@@ -183,11 +183,11 @@ func getRedisScheduler(cache redis.UniversalClient, config *schema.CacheConf) (s
 			config:       config,
 			keyLock: NewRedisLockPool(&schema.CacheConf{
 				Verbose:            config.Verbose,
-				Name:               config.RedisConf.Namespace + "-SchedulerKeyLock",
+				Name:               config.RedisConf.Namespace,
 				CacheDuration:      time.Hour * 168, // 1 week
 				RandomizedDuration: false,
 				RedisConf: &schema.RedisConf{
-					Namespace:       config.RedisConf.Namespace + "-SchedulerKeyLock",
+					Namespace:       config.RedisConf.Namespace,
 					Group:           "",
 					ServerAddresses: config.RedisConf.ServerAddresses,
 					Username:        config.RedisConf.Username,

@@ -19,6 +19,7 @@ type CacheRedis struct {
 
 const KEY_PREFIX_SHADOW = "shadow:"
 const KEY_PREFIX_EXPIRED = "expired:"
+const KEY_PREFIX_LOCK = "locks:"
 
 func NewCacheRedis(config *schema.CacheConf) *CacheRedis {
 
