@@ -103,8 +103,6 @@ func (c *CacheRedis) Store(ctx context.Context, key string, value interface{}, e
 	clusterClient, ok := c.cache.(*redis.ClusterClient)
 	if !ok {
 		err = fmt.Errorf("CacheRedis ERROR - [%s] failed to convert the client to *redis.ClusterClient", c.cacheConfig.Name)
-		// TODO: remove logs
-		log.Println(err)
 		return err
 	}
 	if c.scheduler == nil {
