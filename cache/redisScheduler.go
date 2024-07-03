@@ -19,12 +19,13 @@ type redisScheduler struct {
 }
 
 type redisJob struct {
-	name         string
-	cache        redis.UniversalClient
-	totalExpired int
-	handled      int
-	config       *schema.CacheConf
-	keyLock      *RedisLockPool
+	name              string
+	cache             redis.UniversalClient
+	expiredKeyPattern string
+	totalExpired      int
+	handled           int
+	config            *schema.CacheConf
+	keyLock           *RedisLockPool
 }
 
 func (j redisJob) Run() {
@@ -36,10 +37,6 @@ func (j redisJob) Run() {
 	j.handled = 0
 
 	if j.cache != nil {
-		expiredPrefix := KEY_PREFIX_EXPIRED + "{" + getRedisKeyPrefix(j.config.RedisConf) + "*"
-
-		// TODO: remove logs
-		log.Printf("CacheJob - expiredPrefix: [%s]", expiredPrefix)
 
 		clusterClient, ok := j.cache.(*redis.ClusterClient)
 		if !ok {
@@ -47,7 +44,7 @@ func (j redisJob) Run() {
 			return
 		}
 		err := clusterClient.ForEachMaster(context.Background(), func(ctx context.Context, client *redis.Client) error {
-			iter := client.Scan(ctx, 0, expiredPrefix, 0).Iterator()
+			iter := client.Scan(ctx, 0, j.expiredKeyPattern, 0).Iterator()
 
 			for iter.Next(ctx) {
 				j.iterate(iter.Val())
@@ -151,8 +148,6 @@ func (j *redisJob) handleExpiredEntry(actualKey string) {
 
 	// To make the expired key have same hash tag, need to add curly braces before and after the actual key
 	expiredKey := KEY_PREFIX_EXPIRED + "{" + actualKey + "}"
-	// TODO: remove logs
-	log.Printf("actual key: %v, expired key : %v", actualKey, expiredKey)
 
 	lockError := j.keyLock.tryLock(actualKey)
 	defer j.keyLock.unlock(actualKey)
@@ -176,11 +171,12 @@ func getRedisScheduler(cache redis.UniversalClient, config *schema.CacheConf) (s
 	scheduler = &redisScheduler{
 		cron: cron.New(),
 		job: redisJob{
-			name:         config.Name,
-			cache:        cache,
-			totalExpired: 0,
-			handled:      0,
-			config:       config,
+			name:              config.Name,
+			cache:             cache,
+			expiredKeyPattern: KEY_PREFIX_EXPIRED + "{" + getRedisKeyPrefix(config.RedisConf) + "*",
+			totalExpired:      0,
+			handled:           0,
+			config:            config,
 			keyLock: NewRedisLockPool(&schema.CacheConf{
 				Verbose:            config.Verbose,
 				Name:               config.RedisConf.Namespace,
@@ -231,12 +227,13 @@ func getRedisScheduler(cache redis.UniversalClient, config *schema.CacheConf) (s
 			// infinite loop
 			// this listens in the background for messages.
 			for msg := range ch {
-				// TODO: remove logs
-				log.Printf("[%s] received Keyspace event %v, %v, %v \n", name, msg.String(), msg.Channel, msg.Payload)
+				// // For debug
+				// log.Printf("[%s] received Keyspace event. Channel: [%v], Payload: [%v] \n", name, msg.Channel, msg.Payload)
+				// ////////////////////
 				if strings.HasPrefix(msg.Payload, getRedisKeyPrefix(config.RedisConf)+KEY_PREFIX_SHADOW) {
 					// get the actual key from the shadow key
 					actualKey := strings.Replace(msg.Payload, KEY_PREFIX_SHADOW, "", 1)
-					log.Printf("[%s] found shadow key : %v, actual key : %v", name, msg.Payload, actualKey)
+					log.Printf("[%s] found shadow key: [%v], actual key: [%v]", name, msg.Payload, actualKey)
 					scheduler.expiredKeyChannel <- actualKey
 				}
 			}

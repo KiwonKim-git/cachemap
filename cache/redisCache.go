@@ -56,8 +56,11 @@ func NewCacheRedis(config *schema.CacheConf) *CacheRedis {
 		c.scheduler = getRedisScheduler(c.cache, c.cacheConfig)
 	}
 
-	log.Printf("CacheRedis CREATE - [%s] created CacheRedis cacheDuration: [%s], randomizedDuration: [%t], serverAddress: [%v]",
+	log.Printf("CacheRedis CREATE - [%s] has been created. cacheDuration: [%s], randomizedDuration: [%t], serverAddress: [%v]",
 		c.cacheConfig.Name, c.cacheConfig.CacheDuration.String(), c.cacheConfig.RandomizedDuration, c.cacheConfig.RedisConf.ServerAddresses)
+	if c.scheduler != nil {
+		log.Printf("CacheRedisScheduler CREATE - [%s] has been created. expired key pattern: [%s]", c.scheduler.job.name, c.scheduler.job.expiredKeyPattern)
+	}
 
 	return c
 }
