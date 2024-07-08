@@ -73,7 +73,7 @@ func (j *redisJob) iterate(expiredKey string) {
 	log.Printf("CacheJob - [%s] existing entries - expiredKey: [%v], actual key: [%v]", j.name, expiredKey, actualKey)
 
 	lockError := j.keyLock.tryLock(actualKey)
-	defer j.keyLock.unlock(actualKey)
+	defer j.keyLock.unlock(actualKey, lockError)
 
 	if lockError == nil {
 		clusterClient, ok := j.cache.(*redis.ClusterClient)
@@ -150,7 +150,7 @@ func (j *redisJob) handleExpiredEntry(actualKey string) {
 	expiredKey := KEY_PREFIX_EXPIRED + "{" + actualKey + "}"
 
 	lockError := j.keyLock.tryLock(actualKey)
-	defer j.keyLock.unlock(actualKey)
+	defer j.keyLock.unlock(actualKey, lockError)
 
 	if lockError == nil {
 		result, err := j.cache.Rename(context.Background(), actualKey, expiredKey).Result()

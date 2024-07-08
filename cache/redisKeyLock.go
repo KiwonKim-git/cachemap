@@ -116,13 +116,15 @@ func (l *RedisLockPool) tryLock(actualKey string) (err error) {
 }
 
 // Release the lock and then other processes or threads can obtain a lock. Ok will represent the status of unlocking.
-func (l *RedisLockPool) Unlock(key string) (ok bool, err error) {
+// lockError is the error which is returned by the Lock or TryLock. If lockError is not nil, Unlock will handle it based on error type.
+// ok will be true and err will be nil if there was no issue on Unlock even though lockError is not nil so, the Unlock does not happen actially.
+func (l *RedisLockPool) Unlock(key string, lockError error) (ok bool, err error) {
 
 	actualKey := getRedisKeyPrefix(l.config.RedisConf) + key
-	return l.unlock(actualKey)
+	return l.unlock(actualKey, lockError)
 }
 
-func (l *RedisLockPool) unlock(actualKey string) (ok bool, err error) {
+func (l *RedisLockPool) unlock(actualKey string, lockError error) (ok bool, err error) {
 
 	ok = false
 	err = nil
@@ -132,17 +134,24 @@ func (l *RedisLockPool) unlock(actualKey string) (ok bool, err error) {
 	// TODO: remove logs
 	log.Printf("[RedisLock] Unlock: [%s], mutext : [%s]", actualKey, mu.Name())
 	//////////////
+
 	if result == schema.VALID {
-		ok, err = mu.Unlock()
-		if ok {
-			// TODO: remove logs
-			log.Printf("[RedisLock] Unlocked: [%s], mutext : [%s]", actualKey, mu.Name())
-			//////////////////
+		if lockError != nil {
+			log.Printf("[RedisLock] Unlock - Skip unlock key: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), lockError)
+			ok = true
+			err = nil
 		} else {
-			if err != nil {
-				log.Printf("[RedisLock] Unlock - Error while unlock key: [%s], mutext : [%s], error: %v", actualKey, mu.Name(), err)
+			ok, err = mu.Unlock()
+			if ok {
+				// TODO: remove logs
+				log.Printf("[RedisLock] Unlocked: [%s], mutext : [%s]", actualKey, mu.Name())
+				//////////////////
 			} else {
-				log.Printf("[RedisLock] Unlock - Unlock key [%s] failed without error, mutext : [%s]", actualKey, mu.Name())
+				if err != nil {
+					log.Printf("[RedisLock] Unlock - Error while unlock key: [%s], mutext : [%s], error: %v", actualKey, mu.Name(), err)
+				} else {
+					log.Printf("[RedisLock] Unlock - Unlock key [%s] failed without error, mutext : [%s]", actualKey, mu.Name())
+				}
 			}
 		}
 	} else if result == schema.NOT_FOUND {
