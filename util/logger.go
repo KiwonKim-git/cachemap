@@ -77,7 +77,8 @@ func (l *Logger) PrintLogs(level LOG_TYPE, log string) {
 		filename := path[strings.LastIndex(path, "/")+1:]
 		if ok {
 			l.Logger.Printf("%s:%d: %s", filename, line, log)
+		} else {
+			l.Logger.Print(log)
 		}
-		l.Logger.Print(log)
 	}
 }
