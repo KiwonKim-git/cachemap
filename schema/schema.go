@@ -3,6 +3,8 @@ package schema
 import (
 	"fmt"
 	"time"
+
+	"github.com/KiwonKim-git/cachemap/util"
 )
 
 type RESULT int
@@ -29,8 +31,6 @@ func (r RESULT) String() string {
 }
 
 type CacheConf struct {
-	// True if the cache should print more logs for debugging purpose
-	Verbose bool
 	// Name of the cache
 	Name string
 	// Duration for cache to be expired
@@ -41,6 +41,9 @@ type CacheConf struct {
 	RedisConf *RedisConf
 	// Configuration for scheduler to remove expired entry
 	SchedulerConf *SchedulerConf
+	// (Optional) With verbose mode, the Cache will print out more logs for debugging.
+	// If nil, the Cache will use default log.Logger and print ERROR level logs only.
+	Logger *util.Logger
 }
 
 type SchedulerConf struct {

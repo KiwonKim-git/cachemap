@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/KiwonKim-git/cachemap/schema"
+	"github.com/KiwonKim-git/cachemap/util"
 	"github.com/go-redsync/redsync/v4"
 	"github.com/go-redsync/redsync/v4/redis/goredis/v9"
 	"github.com/redis/go-redis/v9"
@@ -31,6 +32,11 @@ func NewRedisLockPool(config *schema.CacheConf) (lockPool *RedisLockPool) {
 		log.Println("NewRedisKeyLockPool is called with nil RedisConf")
 		return nil
 	}
+
+	if config.Logger == nil {
+		config.Logger = util.NewLogger(util.ERROR, nil)
+	}
+
 	// Create a pool with go-redis which is the pool redisync will use while communicating with Redis. This can also be any pool that implements the `redis.Pool` interface.
 	client := redis.NewUniversalClient(&redis.UniversalOptions{
 		ClientName: config.Name,
@@ -77,18 +83,14 @@ func (l *RedisLockPool) Lock(key string) (err error) {
 func (l *RedisLockPool) lock(actualKey string) (err error) {
 	mu, _ := l.getLockByKey(actualKey)
 
-	// TODO: remove logs
-	log.Printf("[RedisLock] Lock: [%s], mutext : [%s]", actualKey, mu.Name())
+	l.config.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Lock: [%s], mutext : [%s]", actualKey, mu.Name()))
 	err = mu.Lock()
 	if err == nil {
-		log.Printf("[RedisLock] Locked: [%s], mutext : [%s]", actualKey, mu.Name())
+		l.config.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Locked: [%s], mutext : [%s]", actualKey, mu.Name()))
 	} else {
-		log.Printf("[RedisLock] Lock - Error while lock key: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), err)
+		l.config.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Lock - Error while lock key: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), err))
 	}
 	return err
-	///////////////////
-
-	//return mu.Lock()
 }
 
 // Obtain a lock for given key. After this is successful, no one else can obtain the same lock (the same mutex name) until it is unlocked.
@@ -101,23 +103,19 @@ func (l *RedisLockPool) TryLock(key string) (err error) {
 func (l *RedisLockPool) tryLock(actualKey string) (err error) {
 	mu, _ := l.getLockByKey(actualKey)
 
-	// TODO: remove logs
-	log.Printf("[RedisLock] Try Lock: [%s], mutext : [%s]", actualKey, mu.Name())
+	l.config.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Try Lock: [%s], mutext : [%s]", actualKey, mu.Name()))
 	err = mu.TryLock()
 	if err == nil {
-		log.Printf("[RedisLock] Locked: [%s], mutext : [%s]", actualKey, mu.Name())
+		l.config.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Locked: [%s], mutext : [%s]", actualKey, mu.Name()))
 	} else {
-		log.Printf("[RedisLock] TryLock - Error while try to Lock: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), err)
+		l.config.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] TryLock - Error while try to Lock: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), err))
 	}
 	return err
-	///////////////////
-
-	//return mu.TryLock()
 }
 
 // Release the lock and then other processes or threads can obtain a lock. Ok will represent the status of unlocking.
 // lockError is the error which is returned by the Lock or TryLock. If lockError is not nil, Unlock will handle it based on error type.
-// ok will be true and err will be nil if there was no issue on Unlock even though lockError is not nil so, the Unlock does not happen actially.
+// ok will be true and err will be nil if there was no issue on Unlock even though lockError is not nil so, the Unlock does not happen actually.
 func (l *RedisLockPool) Unlock(key string, lockError error) (ok bool, err error) {
 
 	actualKey := getRedisKeyPrefix(l.config.RedisConf) + key
@@ -131,26 +129,22 @@ func (l *RedisLockPool) unlock(actualKey string, lockError error) (ok bool, err 
 
 	mu, result := l.getLockByKey(actualKey)
 
-	// TODO: remove logs
-	log.Printf("[RedisLock] Unlock: [%s], mutext : [%s]", actualKey, mu.Name())
-	//////////////
+	l.config.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Unlock: [%s], mutext : [%s]", actualKey, mu.Name()))
 
 	if result == schema.VALID {
 		if lockError != nil {
-			log.Printf("[RedisLock] Unlock - Skip unlock key: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), lockError)
+			l.config.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Unlock - Skip unlock key: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), lockError))
 			ok = true
 			err = nil
 		} else {
 			ok, err = mu.Unlock()
 			if ok {
-				// TODO: remove logs
-				log.Printf("[RedisLock] Unlocked: [%s], mutext : [%s]", actualKey, mu.Name())
-				//////////////////
+				l.config.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Unlocked: [%s], mutext : [%s]", actualKey, mu.Name()))
 			} else {
 				if err != nil {
-					log.Printf("[RedisLock] Unlock - Error while unlock key: [%s], mutext : [%s], error: %v", actualKey, mu.Name(), err)
+					l.config.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Unlock - Error while unlock key: [%s], mutext : [%s], error: %v", actualKey, mu.Name(), err))
 				} else {
-					log.Printf("[RedisLock] Unlock - Unlock key [%s] failed without error, mutext : [%s]", actualKey, mu.Name())
+					l.config.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Unlock - Unlock key [%s] failed without error, mutext : [%s]", actualKey, mu.Name()))
 				}
 			}
 		}

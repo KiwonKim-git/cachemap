@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/KiwonKim-git/cachemap/schema"
+	"github.com/KiwonKim-git/cachemap/util"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -29,6 +29,12 @@ func NewCacheRedis(config *schema.CacheConf) *CacheRedis {
 		scheduler:   nil,
 	}
 
+	if config != nil && config.Logger != nil {
+		c.cacheConfig.Logger = config.Logger
+	} else {
+		c.cacheConfig.Logger = util.NewLogger(util.ERROR, nil)
+	}
+
 	if config != nil && config.RedisConf != nil {
 
 		c.cache = redis.NewUniversalClient(&redis.UniversalOptions{
@@ -38,7 +44,6 @@ func NewCacheRedis(config *schema.CacheConf) *CacheRedis {
 			Password:   config.RedisConf.Password, // no password set
 		})
 
-		c.cacheConfig.Verbose = config.Verbose
 		c.cacheConfig.Name = config.Name
 		c.cacheConfig.RandomizedDuration = config.RandomizedDuration
 		if c.cacheConfig.RandomizedDuration && config.CacheDuration < (60*time.Second) {
@@ -54,12 +59,12 @@ func NewCacheRedis(config *schema.CacheConf) *CacheRedis {
 		c.cacheConfig.SchedulerConf = getSchedulerConfig(config)
 
 		c.scheduler = getRedisScheduler(c.cache, c.cacheConfig)
-	}
 
-	log.Printf("CacheRedis CREATE - [%s] has been created. cacheDuration: [%s], randomizedDuration: [%t], serverAddress: [%v]",
-		c.cacheConfig.Name, c.cacheConfig.CacheDuration.String(), c.cacheConfig.RandomizedDuration, c.cacheConfig.RedisConf.ServerAddresses)
-	if c.scheduler != nil {
-		log.Printf("CacheRedisScheduler CREATE - [%s] has been created. expired key pattern: [%s]", c.scheduler.job.name, c.scheduler.job.expiredKeyPattern)
+		c.cacheConfig.Logger.PrintLogs(util.ERROR,
+			fmt.Sprintf("CacheRedis CREATE - [%s] has been created. cacheDuration: [%s], randomizedDuration: [%t], serverAddress: [%v]",
+				c.cacheConfig.Name, c.cacheConfig.CacheDuration.String(), c.cacheConfig.RandomizedDuration, c.cacheConfig.RedisConf.ServerAddresses))
+	} else {
+		c.cacheConfig.Logger.PrintLogs(util.ERROR, "CacheRedis CREATE - CacheRedis is created with nil config or RedisConf")
 	}
 
 	return c
@@ -113,16 +118,16 @@ func (c *CacheRedis) Store(ctx context.Context, key string, value interface{}, e
 			shadowKey := keyPrefix + KEY_PREFIX_SHADOW + key
 			err = clusterClient.Set(ctx, shadowKey, "", e.ExpireAt.Sub(now)).Err()
 			if err != nil {
-				log.Println("CacheRedis STORE - Failed to store shadow key and it should be deleted manually. Key: ", actualKey)
+				c.cacheConfig.Logger.PrintLogs(util.ERROR, fmt.Sprint("CacheRedis STORE - Failed to store shadow key and it should be deleted manually. Key: ", actualKey))
 				// ignore error while storing shadow key
 				err = nil
 			}
 		}
 	}
-	if err == nil && c.cacheConfig.Verbose {
-		loc := time.FixedZone("KST", 9*60*60)
-		log.Printf("CacheRedis STORE - [%s] stored the key [%s] (actual: %s) at [%s] and it will be expired at [%s] with randomizedTime: [%s], element: [%s]",
-			c.cacheConfig.Name, key, actualKey, e.LastUpdated.In(loc).Format(time.RFC3339), e.ExpireAt.In(loc).Format(time.RFC3339), time.Duration(randomizedTime).String(), string(bytes))
+	if err == nil {
+		c.cacheConfig.Logger.PrintLogs(util.DEBUG,
+			fmt.Sprintf("CacheRedis STORE - [%s] stored the key [%s] (actual: %s) at [%s] and it will be expired at [%s] with randomizedTime: [%s], element: [%s]",
+				c.cacheConfig.Name, key, actualKey, e.LastUpdated.In(time.FixedZone("KST", 9*60*60)).Format(time.RFC3339), e.ExpireAt.In(time.FixedZone("KST", 9*60*60)).Format(time.RFC3339), time.Duration(randomizedTime).String(), string(bytes)))
 	}
 	return err
 }
@@ -150,36 +155,29 @@ func getValueFromRedis(ctx context.Context, client *redis.ClusterClient, key str
 
 	if err != nil {
 		if err == redis.Nil {
-			if config.Verbose {
-				log.Printf("CacheRedis NOT FOUND - [%s] does not have the key [%s]", config.Name, key)
-			}
+			config.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("CacheRedis NOT FOUND - [%s] does not have the key [%s]", config.Name, key))
 			result = schema.NOT_FOUND
 			err = nil // handle this case as not an error
 		} else {
-			log.Printf("CacheRedis ERROR - [%s] has error while it gets the value of the key [%s] from Redis server, error: [%v]", config.Name, key, err)
+			config.Logger.PrintLogs(util.ERROR, fmt.Sprintf("CacheRedis ERROR - [%s] has error while it gets the value of the key [%s] from Redis server, error: [%v]", config.Name, key, err))
 			result = schema.ERROR
 		}
 	} else {
 		e := elementForCache{}
 		err = json.Unmarshal(bytes, &e)
 		if err != nil {
-			log.Printf("CacheRedis ERROR - [%s] has error while it unmarshal the value of the key [%s] from Redis server, error: [%v]", config.Name, key, err)
+			config.Logger.PrintLogs(util.ERROR, fmt.Sprintf("CacheRedis ERROR - [%s] has error while it unmarshal the value of the key [%s] from Redis server, error: [%v]", config.Name, key, err))
 		} else {
 			value = e.Value
 			lastUpdated = &e.LastUpdated
 			now := time.Now()
 
 			if now.Before(e.ExpireAt) {
-				if config.Verbose {
-					log.Printf("CacheRedis LOAD - [%s] loaded the key: [%s]", config.Name, key)
-				}
+				config.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("CacheRedis LOAD - [%s] loaded the key: [%s]", config.Name, key))
 				result = schema.VALID
 			} else {
-				if config.Verbose {
-					loc := time.FixedZone("KST", 9*60*60)
-					log.Printf("CacheRedis EXPIRED - [%s] has the key [%v] but, it was expired now [%s], expired at: [%s]",
-						config.Name, key, now.In(loc).Format(time.RFC3339), e.ExpireAt.In(loc).Format(time.RFC3339))
-				}
+				config.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("CacheRedis EXPIRED - [%s] has the key [%v] but, it was expired now [%s], expired at: [%s]",
+					config.Name, key, now.In(time.FixedZone("KST", 9*60*60)).Format(time.RFC3339), e.ExpireAt.In(time.FixedZone("KST", 9*60*60)).Format(time.RFC3339)))
 				result = schema.EXPIRED
 			}
 		}

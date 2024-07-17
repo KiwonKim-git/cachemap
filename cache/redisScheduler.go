@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/KiwonKim-git/cachemap/schema"
+	"github.com/KiwonKim-git/cachemap/util"
 	"github.com/redis/go-redis/v9"
 	"github.com/robfig/cron"
 )
@@ -69,8 +70,6 @@ func (j *redisJob) iterate(expiredKey string) {
 
 	actualKey := strings.Replace(expiredKey, KEY_PREFIX_EXPIRED+"{", "", 1)
 	actualKey = strings.Replace(actualKey, "}", "", 1)
-	// TODO: remove logs
-	log.Printf("CacheJob - [%s] existing entries - expiredKey: [%v], actual key: [%v]", j.name, expiredKey, actualKey)
 
 	lockError := j.keyLock.tryLock(actualKey)
 	defer j.keyLock.unlock(actualKey, lockError)
@@ -111,13 +110,11 @@ func (j *redisJob) removeExpiredEntry(key string, value interface{}) bool {
 		}
 	}
 
-	if j.config.Verbose {
-		log.Printf("CacheJob REMOVE - [%s] removeExpiredEntry key: [%v] \n", j.name, key)
-	}
+	j.config.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("CacheJob REMOVE - [%s] removeExpiredEntry key: [%v] \n", j.name, key))
 
 	clusterClient, ok := j.cache.(*redis.ClusterClient)
 	if !ok {
-		log.Println("CacheJob - Failed to convert j.cache to *redis.ClusterClient")
+		j.config.Logger.PrintLogs(util.ERROR, "CacheJob - Failed to convert j.cache to *redis.ClusterClient")
 		return false
 	}
 	clusterClient.Del(context.Background(), key)
@@ -125,7 +122,7 @@ func (j *redisJob) removeExpiredEntry(key string, value interface{}) bool {
 	if j.config != nil && j.config.SchedulerConf != nil && j.config.SchedulerConf.PostProcess != nil {
 		err := j.config.SchedulerConf.PostProcess(value)
 		if err != nil {
-			log.Println("Failed while post-processing after deletion of the element. Error: ", err)
+			j.config.Logger.PrintLogs(util.ERROR, fmt.Sprint("Failed while post-processing after deletion of the element. Error: ", err))
 		}
 	}
 
@@ -155,12 +152,13 @@ func (j *redisJob) handleExpiredEntry(actualKey string) {
 	if lockError == nil {
 		result, err := j.cache.Rename(context.Background(), actualKey, expiredKey).Result()
 		if err != nil {
-			log.Printf("Failed to rename key [%v] to [%v]. Error: %v \n", actualKey, expiredKey, err)
-		} else if j.config.Verbose {
-			log.Printf("Renamed key [%v] to [%v]. Result: %v \n", actualKey, expiredKey, result)
+			j.config.Logger.PrintLogs(util.ERROR, fmt.Sprintf("Failed to rename key [%v] to [%v]. Error: %v \n", actualKey, expiredKey, err))
+		} else {
+			j.config.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("Renamed key [%v] to [%v]. Result: %v \n", actualKey, expiredKey, result))
 		}
+
 	} else {
-		log.Println("[RedisLock][handleExpiredEntry] Failed while locking the key. Skip to next expired key. Error: ", lockError)
+		j.config.Logger.PrintLogs(util.ERROR, fmt.Sprint("[RedisLock][handleExpiredEntry] Failed while locking the key. Skip to next expired key. Error: ", lockError))
 	}
 }
 
@@ -178,7 +176,6 @@ func getRedisScheduler(cache redis.UniversalClient, config *schema.CacheConf) (s
 			handled:           0,
 			config:            config,
 			keyLock: NewRedisLockPool(&schema.CacheConf{
-				Verbose:            config.Verbose,
 				Name:               config.RedisConf.Namespace,
 				CacheDuration:      time.Hour * 168, // 1 week
 				RandomizedDuration: false,
@@ -194,6 +191,7 @@ func getRedisScheduler(cache redis.UniversalClient, config *schema.CacheConf) (s
 					PreProcess:           nil,
 					PostProcess:          nil,
 				},
+				Logger: config.Logger,
 			}),
 		},
 	}
@@ -241,5 +239,9 @@ func getRedisScheduler(cache redis.UniversalClient, config *schema.CacheConf) (s
 
 		return nil
 	})
+	if scheduler != nil {
+		scheduler.job.config.Logger.PrintLogs(util.ERROR,
+			fmt.Sprintf("CacheRedisScheduler CREATE - [%s] has been created. expired key pattern: [%s]", scheduler.job.name, scheduler.job.expiredKeyPattern))
+	}
 	return scheduler
 }

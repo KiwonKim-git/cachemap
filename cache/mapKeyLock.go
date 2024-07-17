@@ -1,10 +1,11 @@
 package cache
 
 import (
-	"log"
+	"fmt"
 	"sync"
 
 	"github.com/KiwonKim-git/cachemap/schema"
+	"github.com/KiwonKim-git/cachemap/util"
 )
 
 // Provide a pool which consists of sync.Mutex lock for keys. This pool is implemented based on cacheMap and the lock in this pool is valid within the process (local).
@@ -14,7 +15,7 @@ type MutexPool struct {
 
 func NewMutexPool(config *schema.CacheConf) (lockPool *MutexPool) {
 	if config == nil {
-		log.Println("NewMapKeyLockPool is called with nil config")
+		util.NewLogger(util.ERROR, nil).PrintLogs(util.ERROR, "NewMapKeyLockPool is called with nil config")
 		return nil
 	}
 	return &MutexPool{keyLocks: NewCacheMap(config)}
@@ -44,10 +45,10 @@ func (l *MutexPool) Unlock(key string) {
 	if result == schema.VALID {
 		mu.Unlock()
 	} else if result == schema.NOT_FOUND {
-		log.Printf("Unlock - [%s] does not exist but unlock is requested", key)
+		l.keyLocks.cacheConfig.Logger.PrintLogs(util.ERROR, fmt.Sprintf("Unlock - [%s] does not exist but unlock is requested", key))
 	} else if result == schema.EXPIRED {
-		log.Printf("Unlock - [%s] is expired but unlock is requested", key)
+		l.keyLocks.cacheConfig.Logger.PrintLogs(util.ERROR, fmt.Sprintf("Unlock - [%s] is expired but unlock is requested", key))
 	} else {
-		log.Printf("Unlock - [%s] is in error state but unlock is requested", key)
+		l.keyLocks.cacheConfig.Logger.PrintLogs(util.ERROR, fmt.Sprintf("Unlock - [%s] is in error state but unlock is requested", key))
 	}
 }

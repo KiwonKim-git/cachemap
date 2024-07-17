@@ -1,11 +1,12 @@
 package cache
 
 import (
-	"log"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/KiwonKim-git/cachemap/schema"
+	"github.com/KiwonKim-git/cachemap/util"
 	"github.com/robfig/cron"
 )
 
@@ -24,9 +25,6 @@ type mapJob struct {
 
 func (j mapJob) Run() {
 
-	loc := time.FixedZone("KST", 9*60*60)
-	now := time.Now()
-
 	j.total = 0
 	j.expired = 0
 
@@ -34,11 +32,12 @@ func (j mapJob) Run() {
 		j.cache.Range(j.removeExpiredEntry)
 
 	} else {
-		log.Printf("CacheJob - [%s] runs but, cache is nil", j.name)
+		j.config.Logger.PrintLogs(util.ERROR, fmt.Sprintf("CacheJob - [%s] runs but, cache is nil", j.name))
 		return
 	}
 
-	log.Printf("CacheJob - [%s] runs at [%s], Total: [%d], Expired: [%d]", j.name, now.In(loc).Format(time.RFC3339), j.total, j.expired)
+	j.config.Logger.PrintLogs(util.ERROR,
+		fmt.Sprintf("CacheJob - [%s] runs at [%s], Total: [%d], Expired: [%d]", j.name, time.Now().In(time.FixedZone("KST", 9*60*60)).Format(time.RFC3339), j.total, j.expired))
 }
 func (j *mapJob) removeExpiredEntry(key, value interface{}) bool {
 
@@ -49,7 +48,7 @@ func (j *mapJob) removeExpiredEntry(key, value interface{}) bool {
 	now := time.Now()
 
 	if !ok {
-		log.Println("Failed while converting from interface{} to the cache element. Key: ", key)
+		j.config.Logger.PrintLogs(util.ERROR, fmt.Sprint("Failed while converting from interface{} to the cache element. Key: ", key))
 	} else if now.After(element.ExpireAt) {
 
 		j.increaseExpiredEntry()
@@ -57,21 +56,20 @@ func (j *mapJob) removeExpiredEntry(key, value interface{}) bool {
 		if j.config != nil && j.config.SchedulerConf != nil && j.config.SchedulerConf.PreProcess != nil {
 			err := j.config.SchedulerConf.PreProcess(element.Value)
 			if err != nil {
-				log.Println("Failed while pre-processing before deletion of the element. Error: ", err)
+				j.config.Logger.PrintLogs(util.ERROR, fmt.Sprint("Failed while pre-processing before deletion of the element. Error: ", err))
 			}
 		}
 
-		if j.config.Verbose {
-			loc := time.FixedZone("KST", 9*60*60)
-			log.Printf("CacheJob REMOVE - [%s] removeExpiredEntry key: [%v] expired at [%s] \n", j.name, key, element.ExpireAt.In(loc).Format(time.RFC3339))
-		}
+		j.config.Logger.PrintLogs(util.DEBUG,
+			fmt.Sprintf("CacheJob REMOVE - [%s] removeExpiredEntry key: [%v] expired at [%s] \n",
+				j.name, key, element.ExpireAt.In(time.FixedZone("KST", 9*60*60)).Format(time.RFC3339)))
 
 		j.cache.Delete(key)
 
 		if j.config != nil && j.config.SchedulerConf != nil && j.config.SchedulerConf.PostProcess != nil {
 			err := j.config.SchedulerConf.PostProcess(element.Value)
 			if err != nil {
-				log.Println("Failed while post-processing after deletion of the element. Error: ", err)
+				j.config.Logger.PrintLogs(util.ERROR, fmt.Sprint("Failed while post-processing after deletion of the element. Error: ", err))
 			}
 		}
 	}
@@ -103,7 +101,9 @@ func getMapScheduler(cacheMap *sync.Map, config *schema.CacheConf) (scheduler *m
 			config:  config,
 		},
 	}
-
+	if scheduler.job.config.Logger == nil {
+		config.Logger = util.NewLogger(util.ERROR, nil)
+	}
 	scheduler.cron.AddJob(config.SchedulerConf.CronExprForScheduler, scheduler.job)
 	scheduler.cron.Start()
 	return scheduler
