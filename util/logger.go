@@ -3,6 +3,8 @@ package util
 import (
 	"log"
 	"os"
+	"runtime"
+	"strings"
 )
 
 type LOG_TYPE int
@@ -45,7 +47,7 @@ func Default() *Logger {
 			verb = DEBUG
 		}
 		new := log.Default()
-		new.SetFlags(log.LstdFlags | log.Lshortfile)
+		new.SetFlags(log.LstdFlags | log.Lmicroseconds)
 
 		defaultLogger = NewLogger(verb, new)
 	}
@@ -69,8 +71,13 @@ func NewLogger(logLevel LOG_TYPE, logger *log.Logger) *Logger {
 	return new
 }
 
-func (l *Logger) PrintLogs(level LOG_TYPE, line string) {
+func (l *Logger) PrintLogs(level LOG_TYPE, log string) {
 	if l.LogLevel <= level {
-		l.Logger.Print(line)
+		_, path, line, ok := runtime.Caller(1)
+		filename := path[strings.LastIndex(path, "/")+1:]
+		if ok {
+			l.Logger.Printf("%s:%d: %s", filename, line, log)
+		}
+		l.Logger.Print(log)
 	}
 }
