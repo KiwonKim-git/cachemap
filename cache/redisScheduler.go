@@ -3,7 +3,6 @@ package cache
 import (
 	"context"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -41,7 +40,7 @@ func (j redisJob) Run() {
 
 		clusterClient, ok := j.cache.(*redis.ClusterClient)
 		if !ok {
-			log.Println("CacheJob - Failed to convert j.cache to *redis.ClusterClient")
+			j.config.Logger.PrintLogs(util.ERROR, "CacheJob - Failed to convert j.cache to *redis.ClusterClient")
 			return
 		}
 		err := clusterClient.ForEachMaster(context.Background(), func(ctx context.Context, client *redis.Client) error {
@@ -53,15 +52,15 @@ func (j redisJob) Run() {
 			return iter.Err()
 		})
 		if err != nil {
-			log.Println("CacheJob - Failed while scanning keys in Redis. Error: ", err)
+			j.config.Logger.PrintLogs(util.ERROR, fmt.Sprint("CacheJob - Failed while scanning keys in Redis. Error: ", err))
 			return
 		}
 	} else {
-		log.Printf("CacheJob - [%s] runs but, cache is nil", j.name)
+		j.config.Logger.PrintLogs(util.ERROR, fmt.Sprintf("CacheJob - [%s] runs but, cache is nil", j.name))
 		return
 	}
 
-	log.Printf("CacheJob - [%s] runs at [%s], TotalExpired: [%d], Handled: [%d]", j.name, now.In(loc).Format(time.RFC3339), j.totalExpired, j.handled)
+	j.config.Logger.PrintLogs(util.ERROR, fmt.Sprintf("CacheJob - [%s] runs at [%s], TotalExpired: [%d], Handled: [%d]", j.name, now.In(loc).Format(time.RFC3339), j.totalExpired, j.handled))
 }
 
 func (j *redisJob) iterate(expiredKey string) {
@@ -77,25 +76,26 @@ func (j *redisJob) iterate(expiredKey string) {
 	if lockError == nil {
 		clusterClient, ok := j.cache.(*redis.ClusterClient)
 		if !ok {
-			err := fmt.Errorf("CacheRedis ERROR - [%s] failed to convert the client to *redis.ClusterClient", j.config.Name)
-			log.Println(err)
+			j.config.Logger.PrintLogs(util.ERROR, fmt.Sprint(fmt.Errorf("CacheRedis ERROR - [%s] failed to convert the client to *redis.ClusterClient", j.config.Name)))
 			return
 		}
 
 		value, result, _, err := getValueFromRedis(context.Background(), clusterClient, expiredKey, j.config)
 
 		if err != nil {
-			log.Println("CacheJob - Failed while getting value from Redis. Error: ", err)
+			j.config.Logger.PrintLogs(util.ERROR, fmt.Sprint("CacheJob - Failed while getting value from Redis. Error: ", err))
 		} else if result == schema.EXPIRED && value != nil {
 			j.removeExpiredEntry(expiredKey, value)
 		} else if value != nil {
-			log.Printf("CacheJob - the [%s] actual key is not expired yet (status : %v) but, why is this key moved to EXPIRED namespace? anyway remove it.", actualKey, result.String())
+			j.config.Logger.PrintLogs(util.ERROR,
+				fmt.Sprintf("CacheJob - the [%s] actual key is not expired yet (status : %v) but, why is this key moved to EXPIRED namespace? anyway remove it.", actualKey, result.String()))
 			j.removeExpiredEntry(expiredKey, value)
 		} else {
-			log.Printf("CacheJob - Why is the [%s] actual key moved to EXPIRED namespace? expired key : [%s]", actualKey, expiredKey)
+			j.config.Logger.PrintLogs(util.ERROR,
+				fmt.Sprintf("CacheJob - Why is the [%s] actual key moved to EXPIRED namespace? expired key : [%s]", actualKey, expiredKey))
 		}
 	} else {
-		log.Println("[RedisLock][Iterate] Failed while locking the key. Skip to next expired key. Error: ", lockError)
+		j.config.Logger.PrintLogs(util.ERROR, fmt.Sprint("[RedisLock][Iterate] Failed while locking the key. Skip to next expired key. Error: ", lockError))
 	}
 }
 
@@ -106,7 +106,7 @@ func (j *redisJob) removeExpiredEntry(key string, value interface{}) bool {
 	if j.config != nil && j.config.SchedulerConf != nil && j.config.SchedulerConf.PreProcess != nil {
 		err := j.config.SchedulerConf.PreProcess(value)
 		if err != nil {
-			log.Println("Failed while pre-processing before deletion of the element. Error: ", err)
+			j.config.Logger.PrintLogs(util.ERROR, fmt.Sprint("Failed while pre-processing before deletion of the element. Error: ", err))
 		}
 	}
 
@@ -214,7 +214,7 @@ func getRedisScheduler(cache redis.UniversalClient, config *schema.CacheConf) (s
 		pubSub := client.PSubscribe(ctx, "__keyevent*__:expired")
 		id, err := client.ClientID(ctx).Result()
 		if err != nil {
-			log.Printf("Failed to get client id. Error: %v", err)
+			scheduler.job.config.Logger.PrintLogs(util.ERROR, fmt.Sprintf("Failed to get client id. Error: %v", err))
 			return err
 		}
 
@@ -231,7 +231,7 @@ func getRedisScheduler(cache redis.UniversalClient, config *schema.CacheConf) (s
 				if strings.HasPrefix(msg.Payload, getRedisKeyPrefix(config.RedisConf)+KEY_PREFIX_SHADOW) {
 					// get the actual key from the shadow key
 					actualKey := strings.Replace(msg.Payload, KEY_PREFIX_SHADOW, "", 1)
-					log.Printf("[%s] found shadow key: [%v], actual key: [%v]", name, msg.Payload, actualKey)
+					scheduler.job.config.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[%s] found shadow key: [%v], actual key: [%v]", name, msg.Payload, actualKey))
 					scheduler.expiredKeyChannel <- actualKey
 				}
 			}
