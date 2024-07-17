@@ -15,7 +15,7 @@ type MutexPool struct {
 
 func NewMutexPool(config *schema.CacheConf) (lockPool *MutexPool) {
 	if config == nil {
-		util.NewLogger(util.ERROR, nil).PrintLogs(util.ERROR, "NewMapKeyLockPool is called with nil config")
+		util.Default().PrintLogs(util.ERROR, "NewMapKeyLockPool is called with nil config")
 		return nil
 	}
 	return &MutexPool{keyLocks: NewCacheMap(config)}

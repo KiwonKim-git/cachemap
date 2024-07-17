@@ -102,7 +102,7 @@ func getMapScheduler(cacheMap *sync.Map, config *schema.CacheConf) (scheduler *m
 		},
 	}
 	if scheduler.job.config.Logger == nil {
-		config.Logger = util.NewLogger(util.ERROR, nil)
+		config.Logger = util.Default()
 	}
 	scheduler.cron.AddJob(config.SchedulerConf.CronExprForScheduler, scheduler.job)
 	scheduler.cron.Start()

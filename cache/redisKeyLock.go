@@ -19,7 +19,6 @@ import (
 type RedisLockPool struct {
 	redsync  *redsync.Redsync
 	keyLocks *CacheMap
-	config   *schema.CacheConf
 }
 
 func NewRedisLockPool(config *schema.CacheConf) (lockPool *RedisLockPool) {
@@ -34,7 +33,7 @@ func NewRedisLockPool(config *schema.CacheConf) (lockPool *RedisLockPool) {
 	}
 
 	if config.Logger == nil {
-		config.Logger = util.NewLogger(util.ERROR, nil)
+		config.Logger = util.Default()
 	}
 
 	// Create a pool with go-redis which is the pool redisync will use while communicating with Redis. This can also be any pool that implements the `redis.Pool` interface.
@@ -53,7 +52,6 @@ func NewRedisLockPool(config *schema.CacheConf) (lockPool *RedisLockPool) {
 	return &RedisLockPool{
 		redsync:  rs,
 		keyLocks: NewCacheMap(config),
-		config:   config,
 	}
 }
 
@@ -76,19 +74,19 @@ func (l *RedisLockPool) getLockByKey(actualKey string) (mu *redsync.Mutex, resul
 
 // Obtain a lock for given key. After this is successful, no one else can obtain the same lock (the same mutex name) until it is unlocked.
 func (l *RedisLockPool) Lock(key string) (err error) {
-	actualKey := getRedisKeyPrefix(l.config.RedisConf) + key
+	actualKey := getRedisKeyPrefix(l.keyLocks.cacheConfig.RedisConf) + key
 	return l.lock(actualKey)
 }
 
 func (l *RedisLockPool) lock(actualKey string) (err error) {
 	mu, _ := l.getLockByKey(actualKey)
 
-	l.config.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Lock: [%s], mutext : [%s]", actualKey, mu.Name()))
+	l.keyLocks.cacheConfig.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Lock: [%s], mutext : [%s]", actualKey, mu.Name()))
 	err = mu.Lock()
 	if err == nil {
-		l.config.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Locked: [%s], mutext : [%s]", actualKey, mu.Name()))
+		l.keyLocks.cacheConfig.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Locked: [%s], mutext : [%s]", actualKey, mu.Name()))
 	} else {
-		l.config.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Lock - Error while lock key: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), err))
+		l.keyLocks.cacheConfig.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Lock - Error while lock key: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), err))
 	}
 	return err
 }
@@ -96,19 +94,19 @@ func (l *RedisLockPool) lock(actualKey string) (err error) {
 // Obtain a lock for given key. After this is successful, no one else can obtain the same lock (the same mutex name) until it is unlocked.
 // And also TryLock only attempts to lock m once and returns immediately regardless of success or failure without retrying.
 func (l *RedisLockPool) TryLock(key string) (err error) {
-	actualKey := getRedisKeyPrefix(l.config.RedisConf) + key
+	actualKey := getRedisKeyPrefix(l.keyLocks.cacheConfig.RedisConf) + key
 	return l.tryLock(actualKey)
 }
 
 func (l *RedisLockPool) tryLock(actualKey string) (err error) {
 	mu, _ := l.getLockByKey(actualKey)
 
-	l.config.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Try Lock: [%s], mutext : [%s]", actualKey, mu.Name()))
+	l.keyLocks.cacheConfig.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Try Lock: [%s], mutext : [%s]", actualKey, mu.Name()))
 	err = mu.TryLock()
 	if err == nil {
-		l.config.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Locked: [%s], mutext : [%s]", actualKey, mu.Name()))
+		l.keyLocks.cacheConfig.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Locked: [%s], mutext : [%s]", actualKey, mu.Name()))
 	} else {
-		l.config.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] TryLock - Error while try to Lock: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), err))
+		l.keyLocks.cacheConfig.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] TryLock - Error while try to Lock: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), err))
 	}
 	return err
 }
@@ -118,7 +116,7 @@ func (l *RedisLockPool) tryLock(actualKey string) (err error) {
 // ok will be true and err will be nil if there was no issue on Unlock even though lockError is not nil so, the Unlock does not happen actually.
 func (l *RedisLockPool) Unlock(key string, lockError error) (ok bool, err error) {
 
-	actualKey := getRedisKeyPrefix(l.config.RedisConf) + key
+	actualKey := getRedisKeyPrefix(l.keyLocks.cacheConfig.RedisConf) + key
 	return l.unlock(actualKey, lockError)
 }
 
@@ -129,22 +127,22 @@ func (l *RedisLockPool) unlock(actualKey string, lockError error) (ok bool, err 
 
 	mu, result := l.getLockByKey(actualKey)
 
-	l.config.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Unlock: [%s], mutext : [%s]", actualKey, mu.Name()))
+	l.keyLocks.cacheConfig.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Unlock: [%s], mutext : [%s]", actualKey, mu.Name()))
 
 	if result == schema.VALID {
 		if lockError != nil {
-			l.config.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Unlock - Skip unlock key: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), lockError))
+			l.keyLocks.cacheConfig.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Unlock - Skip unlock key: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), lockError))
 			ok = true
 			err = nil
 		} else {
 			ok, err = mu.Unlock()
 			if ok {
-				l.config.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Unlocked: [%s], mutext : [%s]", actualKey, mu.Name()))
+				l.keyLocks.cacheConfig.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Unlocked: [%s], mutext : [%s]", actualKey, mu.Name()))
 			} else {
 				if err != nil {
-					l.config.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Unlock - Error while unlock key: [%s], mutext : [%s], error: %v", actualKey, mu.Name(), err))
+					l.keyLocks.cacheConfig.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Unlock - Error while unlock key: [%s], mutext : [%s], error: %v", actualKey, mu.Name(), err))
 				} else {
-					l.config.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Unlock - Unlock key [%s] failed without error, mutext : [%s]", actualKey, mu.Name()))
+					l.keyLocks.cacheConfig.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Unlock - Unlock key [%s] failed without error, mutext : [%s]", actualKey, mu.Name()))
 				}
 			}
 		}

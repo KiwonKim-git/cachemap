@@ -40,7 +40,7 @@ func NewCacheMap(config *schema.CacheConf) *CacheMap {
 	}
 
 	if c.cacheConfig.Logger == nil {
-		c.cacheConfig.Logger = util.NewLogger(util.ERROR, nil)
+		c.cacheConfig.Logger = util.Default()
 	}
 
 	c.cacheConfig.SchedulerConf = getSchedulerConfig(config)

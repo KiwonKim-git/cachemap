@@ -1,6 +1,9 @@
 package util
 
-import "log"
+import (
+	"log"
+	"os"
+)
 
 type LOG_TYPE int
 
@@ -31,6 +34,25 @@ type Logger struct {
 	Logger   *log.Logger
 }
 
+var defaultLogger *Logger = nil
+
+// Default returns the default logger. It will create a new logger with minimum log level based on the ENV_VERBOSE environment variable.
+// If ENV_VERBOSE is set to "debug", the DEBUG and above level logs will be printed. Otherwise, only ERROR logs will be printed.
+func Default() *Logger {
+	if defaultLogger == nil {
+		verb := ERROR
+		if os.Getenv("ENV_VERBOSE") == "debug" {
+			verb = DEBUG
+		}
+		new := log.Default()
+		new.SetFlags(log.LstdFlags | log.Lshortfile)
+
+		defaultLogger = NewLogger(verb, new)
+	}
+	return defaultLogger
+}
+
+// NewLogger creates a logger with the specified log level and logger.
 func NewLogger(logLevel LOG_TYPE, logger *log.Logger) *Logger {
 
 	new := &Logger{

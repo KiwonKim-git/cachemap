@@ -42,7 +42,7 @@ type CacheConf struct {
 	// Configuration for scheduler to remove expired entry
 	SchedulerConf *SchedulerConf
 	// (Optional) With verbose mode, the Cache will print out more logs for debugging.
-	// If nil, the Cache will use default log.Logger and print ERROR level logs only.
+	// If nil, the Cache will use default logger and log level will be set based on ENV_VERBOSE environment variable..
 	Logger *util.Logger
 }
 

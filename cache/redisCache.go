@@ -32,7 +32,7 @@ func NewCacheRedis(config *schema.CacheConf) *CacheRedis {
 	if config != nil && config.Logger != nil {
 		c.cacheConfig.Logger = config.Logger
 	} else {
-		c.cacheConfig.Logger = util.NewLogger(util.ERROR, nil)
+		c.cacheConfig.Logger = util.Default()
 	}
 
 	if config != nil && config.RedisConf != nil {
