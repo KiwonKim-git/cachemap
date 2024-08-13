@@ -9,6 +9,7 @@ import (
 	"github.com/KiwonKim-git/cachemap/schema"
 	"github.com/KiwonKim-git/cachemap/util"
 	"github.com/redis/go-redis/v9"
+	redistrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/redis/go-redis.v9"
 )
 
 type CacheRedis struct {
@@ -43,6 +44,11 @@ func NewCacheRedis(config *schema.CacheConf) *CacheRedis {
 			Username:   config.RedisConf.Username, // no username specified
 			Password:   config.RedisConf.Password, // no password set
 		})
+
+		redistrace.WrapClient(c.cache,
+			redistrace.WithServiceName(config.Name),
+			redistrace.WithAnalytics(true),
+			redistrace.WithAnalyticsRate(1.0))
 
 		c.cacheConfig.Name = config.Name
 		c.cacheConfig.RandomizedDuration = config.RandomizedDuration
@@ -105,18 +111,13 @@ func (c *CacheRedis) Store(ctx context.Context, key string, value interface{}, e
 	// Otherwise, set the expiration time to 0 to make Cache Scheduler handle the expired keys and values.
 	// And then, set the shadow key with empty value to get expiration event.
 	// This is for the case that the client wants to use pre-process and/or post-process function before and after deletion of expired entries.
-	clusterClient, ok := c.cache.(*redis.ClusterClient)
-	if !ok {
-		err = fmt.Errorf("CacheRedis ERROR - [%s] failed to convert the client to *redis.ClusterClient", c.cacheConfig.Name)
-		return err
-	}
 	if c.scheduler == nil {
-		err = clusterClient.Set(ctx, actualKey, bytes, e.ExpireAt.Sub(now)).Err()
+		err = c.cache.Set(ctx, actualKey, bytes, e.ExpireAt.Sub(now)).Err()
 	} else {
-		err = clusterClient.Set(ctx, actualKey, bytes, 0).Err()
+		err = c.cache.Set(ctx, actualKey, bytes, 0).Err()
 		if err == nil {
 			shadowKey := keyPrefix + KEY_PREFIX_SHADOW + key
-			err = clusterClient.Set(ctx, shadowKey, "", e.ExpireAt.Sub(now)).Err()
+			err = c.cache.Set(ctx, shadowKey, "", e.ExpireAt.Sub(now)).Err()
 			if err != nil {
 				c.cacheConfig.Logger.PrintLogs(util.ERROR, fmt.Sprint("CacheRedis STORE - Failed to store shadow key and it should be deleted manually. Key: ", actualKey))
 				// ignore error while storing shadow key
@@ -135,16 +136,10 @@ func (c *CacheRedis) Store(ctx context.Context, key string, value interface{}, e
 func (c *CacheRedis) Load(ctx context.Context, key string) (value interface{}, result schema.RESULT, lastUpdated *time.Time, err error) {
 
 	actualKey := getRedisKeyPrefix(c.cacheConfig.RedisConf) + key
-
-	clusterClient, ok := c.cache.(*redis.ClusterClient)
-	if !ok {
-		err = fmt.Errorf("CacheRedis ERROR - [%s] failed to convert the client to *redis.ClusterClient", c.cacheConfig.Name)
-		return nil, schema.ERROR, nil, err
-	}
-	return getValueFromRedis(ctx, clusterClient, actualKey, c.cacheConfig)
+	return getValueFromRedis(ctx, c.cache, actualKey, c.cacheConfig)
 }
 
-func getValueFromRedis(ctx context.Context, client *redis.ClusterClient, key string, config *schema.CacheConf) (value interface{}, result schema.RESULT, lastUpdated *time.Time, err error) {
+func getValueFromRedis(ctx context.Context, client redis.UniversalClient, key string, config *schema.CacheConf) (value interface{}, result schema.RESULT, lastUpdated *time.Time, err error) {
 
 	value = nil
 	result = schema.NOT_FOUND

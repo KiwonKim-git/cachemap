@@ -74,13 +74,8 @@ func (j *redisJob) iterate(expiredKey string) {
 	defer j.keyLock.unlock(actualKey, lockError)
 
 	if lockError == nil {
-		clusterClient, ok := j.cache.(*redis.ClusterClient)
-		if !ok {
-			j.config.Logger.PrintLogs(util.ERROR, fmt.Sprint(fmt.Errorf("CacheRedis ERROR - [%s] failed to convert the client to *redis.ClusterClient", j.config.Name)))
-			return
-		}
 
-		value, result, _, err := getValueFromRedis(context.Background(), clusterClient, expiredKey, j.config)
+		value, result, _, err := getValueFromRedis(context.Background(), j.cache, expiredKey, j.config)
 
 		if err != nil {
 			j.config.Logger.PrintLogs(util.ERROR, fmt.Sprint("CacheJob - Failed while getting value from Redis. Error: ", err))
@@ -112,12 +107,7 @@ func (j *redisJob) removeExpiredEntry(key string, value interface{}) bool {
 
 	j.config.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("CacheJob REMOVE - [%s] removeExpiredEntry key: [%v] \n", j.name, key))
 
-	clusterClient, ok := j.cache.(*redis.ClusterClient)
-	if !ok {
-		j.config.Logger.PrintLogs(util.ERROR, "CacheJob - Failed to convert j.cache to *redis.ClusterClient")
-		return false
-	}
-	clusterClient.Del(context.Background(), key)
+	j.cache.Del(context.Background(), key)
 
 	if j.config != nil && j.config.SchedulerConf != nil && j.config.SchedulerConf.PostProcess != nil {
 		err := j.config.SchedulerConf.PostProcess(value)
