@@ -1,7 +1,10 @@
 package schema
 
 import (
+	"fmt"
 	"time"
+
+	"github.com/KiwonKim-git/cachemap/util"
 )
 
 type RESULT int
@@ -13,9 +16,21 @@ const (
 	ERROR
 )
 
+func (r RESULT) String() string {
+	switch r {
+	case VALID:
+		return "VALID"
+	case EXPIRED:
+		return "EXPIRED"
+	case NOT_FOUND:
+		return "NOT_FOUND"
+	case ERROR:
+		return "ERROR"
+	}
+	return fmt.Sprintf("%d", int(r))
+}
+
 type CacheConf struct {
-	// True if the cache should print more logs for debugging purpose
-	Verbose bool
 	// Name of the cache
 	Name string
 	// Duration for cache to be expired
@@ -26,6 +41,9 @@ type CacheConf struct {
 	RedisConf *RedisConf
 	// Configuration for scheduler to remove expired entry
 	SchedulerConf *SchedulerConf
+	// (Optional) With verbose mode, the Cache will print out more logs for debugging.
+	// If nil, the Cache will use default logger and log level will be set based on ENV_VERBOSE environment variable..
+	Logger *util.Logger
 }
 
 type SchedulerConf struct {
@@ -37,8 +55,8 @@ type SchedulerConf struct {
 	PostProcess ProcessFunc
 }
 
-// A function that process data entry in cache. Returns logs and error if any.
-type ProcessFunc func(value interface{}) (logs string, err error)
+// A function that process data entry in cache. Returns error if any.
+type ProcessFunc func(value interface{}) (err error)
 
 type RedisConf struct {
 	// Namespace for database to store KEY and VALUE in same logical storage. Usually service name if the appliction consist of multiple applications.
