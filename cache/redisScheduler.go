@@ -90,7 +90,7 @@ func (j *redisJob) iterate(expiredKey string) {
 				fmt.Sprintf("CacheJob - Why is the [%s] actual key moved to EXPIRED namespace? expired key : [%s] (status : %v)", actualKey, expiredKey, result.String()))
 		}
 	} else {
-		j.config.Logger.PrintLogs(util.ERROR, fmt.Sprint("[RedisLock] [Iterate] Failed while locking the key. Skip to next expired key. Error: ", lockError))
+		j.config.Logger.PrintLogs(util.DEBUG, fmt.Sprint("[RedisLock] [Iterate] Failed while locking the key. Skip to next expired key. Error: ", lockError))
 	}
 }
 
