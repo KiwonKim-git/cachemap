@@ -3,6 +3,7 @@ package cache
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/KiwonKim-git/cachemap/schema"
 	"github.com/KiwonKim-git/cachemap/util"
@@ -106,7 +107,11 @@ func (l *RedisLockPool) tryLock(actualKey string) (err error) {
 	if err == nil {
 		l.keyLocks.cacheConfig.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Locked: [%s], mutext : [%s]", actualKey, mu.Name()))
 	} else {
-		l.keyLocks.cacheConfig.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] TryLock - Error while try to Lock: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), err))
+		if strings.HasPrefix(err.Error(), "lock already taken") {
+			l.keyLocks.cacheConfig.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] TryLock - Error while try to Lock: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), err))
+		} else {
+			l.keyLocks.cacheConfig.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] TryLock - Error while try to Lock: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), err))
+		}
 	}
 	return err
 }
@@ -131,7 +136,11 @@ func (l *RedisLockPool) unlock(actualKey string, lockError error) (ok bool, err 
 
 	if result == schema.VALID {
 		if lockError != nil {
-			l.keyLocks.cacheConfig.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Unlock - Skip unlock key: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), lockError))
+			if strings.HasPrefix(lockError.Error(), "lock already taken") {
+				l.keyLocks.cacheConfig.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Unlock - Skip unlock key: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), lockError))
+			} else {
+				l.keyLocks.cacheConfig.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Unlock - Skip unlock key: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), lockError))
+			}
 			ok = true
 			err = nil
 		} else {
