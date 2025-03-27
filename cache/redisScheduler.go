@@ -86,8 +86,13 @@ func (j *redisJob) iterate(expiredKey string) {
 				fmt.Sprintf("CacheJob - the [%s] actual key is not expired yet (status : %v) but, why is this key moved to EXPIRED namespace? anyway remove it.", actualKey, result.String()))
 			j.removeExpiredEntry(expiredKey, value)
 		} else {
-			j.config.Logger.PrintLogs(util.ERROR,
-				fmt.Sprintf("CacheJob - Why is the [%s] actual key moved to EXPIRED namespace? expired key : [%s] (status : %v)", actualKey, expiredKey, result.String()))
+			if result == schema.NOT_FOUND {
+				j.config.Logger.PrintLogs(util.DEBUG,
+					fmt.Sprintf("CacheJob - Why is the [%s] actual key moved to EXPIRED namespace? It seems the value and key were already removed by other instances. expired key : [%s] (status : %v)", actualKey, expiredKey, result.String()))
+			} else {
+				j.config.Logger.PrintLogs(util.ERROR,
+					fmt.Sprintf("CacheJob - Why is the [%s] actual key moved to EXPIRED namespace? expired key : [%s] (status : %v)", actualKey, expiredKey, result.String()))
+			}
 		}
 	} else {
 		j.config.Logger.PrintLogs(util.DEBUG, fmt.Sprint("[RedisLock] [Iterate] Failed while locking the key. Skip to next expired key. Error: ", lockError))
