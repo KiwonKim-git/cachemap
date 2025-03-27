@@ -82,12 +82,13 @@ func (l *RedisLockPool) Lock(key string) (err error) {
 func (l *RedisLockPool) lock(actualKey string) (err error) {
 	mu, _ := l.getLockByKey(actualKey)
 
-	l.keyLocks.cacheConfig.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Lock: [%s], mutext : [%s]", actualKey, mu.Name()))
+	logger := l.keyLocks.cacheConfig.Logger
+	logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Lock: [%s], mutext : [%s]", actualKey, mu.Name()))
 	err = mu.Lock()
 	if err == nil {
-		l.keyLocks.cacheConfig.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Locked: [%s], mutext : [%s]", actualKey, mu.Name()))
+		logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Locked: [%s], mutext : [%s]", actualKey, mu.Name()))
 	} else {
-		l.keyLocks.cacheConfig.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Lock - Error while lock key: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), err))
+		logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Lock - Error while lock key: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), err))
 	}
 	return err
 }
@@ -102,15 +103,16 @@ func (l *RedisLockPool) TryLock(key string) (err error) {
 func (l *RedisLockPool) tryLock(actualKey string) (err error) {
 	mu, _ := l.getLockByKey(actualKey)
 
-	l.keyLocks.cacheConfig.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Try Lock: [%s], mutext : [%s]", actualKey, mu.Name()))
+	logger := l.keyLocks.cacheConfig.Logger
+	logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Try Lock: [%s], mutext : [%s]", actualKey, mu.Name()))
 	err = mu.TryLock()
 	if err == nil {
-		l.keyLocks.cacheConfig.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Locked: [%s], mutext : [%s]", actualKey, mu.Name()))
+		logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Locked: [%s], mutext : [%s]", actualKey, mu.Name()))
 	} else {
 		if strings.HasPrefix(err.Error(), "lock already taken") {
-			l.keyLocks.cacheConfig.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] TryLock - Error while try to Lock: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), err))
+			logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] TryLock - Error while try to Lock: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), err))
 		} else {
-			l.keyLocks.cacheConfig.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] TryLock - Error while try to Lock: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), err))
+			logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] TryLock - Error while try to Lock: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), err))
 		}
 	}
 	return err
@@ -132,26 +134,31 @@ func (l *RedisLockPool) unlock(actualKey string, lockError error) (ok bool, err 
 
 	mu, result := l.getLockByKey(actualKey)
 
-	l.keyLocks.cacheConfig.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Unlock: [%s], mutext : [%s]", actualKey, mu.Name()))
+	logger := l.keyLocks.cacheConfig.Logger
+	logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Unlock: [%s], mutext : [%s]", actualKey, mu.Name()))
 
 	if result == schema.VALID {
 		if lockError != nil {
 			if strings.HasPrefix(lockError.Error(), "lock already taken") {
-				l.keyLocks.cacheConfig.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Unlock - Skip unlock key: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), lockError))
+				logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Unlock - Skip unlock key: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), lockError))
 			} else {
-				l.keyLocks.cacheConfig.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Unlock - Skip unlock key: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), lockError))
+				logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Unlock - Skip unlock key: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), lockError))
 			}
 			ok = true
 			err = nil
 		} else {
 			ok, err = mu.Unlock()
 			if ok {
-				l.keyLocks.cacheConfig.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Unlocked: [%s], mutext : [%s]", actualKey, mu.Name()))
+				logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Unlocked: [%s], mutext : [%s]", actualKey, mu.Name()))
 			} else {
 				if err != nil {
-					l.keyLocks.cacheConfig.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Unlock - Error while unlock key: [%s], mutext : [%s], error: %v", actualKey, mu.Name(), err))
+					if strings.HasPrefix(err.Error(), "lock already taken") {
+						logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Unlock - There was no error while lock but, it was locked by other innstances already while unlock key: [%s], mutext : [%s], error: %v", actualKey, mu.Name(), err))
+					} else {
+						logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Unlock - Error while unlock key: [%s], mutext : [%s], error: %v", actualKey, mu.Name(), err))
+					}
 				} else {
-					l.keyLocks.cacheConfig.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Unlock - Unlock key [%s] failed without error, mutext : [%s]", actualKey, mu.Name()))
+					logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Unlock - Unlock key [%s] failed without error, mutext : [%s]", actualKey, mu.Name()))
 				}
 			}
 		}
