@@ -86,11 +86,16 @@ func (j *redisJob) iterate(expiredKey string) {
 				fmt.Sprintf("CacheJob - the [%s] actual key is not expired yet (status : %v) but, why is this key moved to EXPIRED namespace? anyway remove it.", actualKey, result.String()))
 			j.removeExpiredEntry(expiredKey, value)
 		} else {
-			j.config.Logger.PrintLogs(util.ERROR,
-				fmt.Sprintf("CacheJob - Why is the [%s] actual key moved to EXPIRED namespace? expired key : [%s]", actualKey, expiredKey))
+			if result == schema.NOT_FOUND {
+				j.config.Logger.PrintLogs(util.DEBUG,
+					fmt.Sprintf("CacheJob - Why is the [%s] actual key moved to EXPIRED namespace? It seems the value and key were already removed by other instances. expired key : [%s] (status : %v)", actualKey, expiredKey, result.String()))
+			} else {
+				j.config.Logger.PrintLogs(util.ERROR,
+					fmt.Sprintf("CacheJob - Why is the [%s] actual key moved to EXPIRED namespace? expired key : [%s] (status : %v)", actualKey, expiredKey, result.String()))
+			}
 		}
 	} else {
-		j.config.Logger.PrintLogs(util.ERROR, fmt.Sprint("[RedisLock][Iterate] Failed while locking the key. Skip to next expired key. Error: ", lockError))
+		j.config.Logger.PrintLogs(util.DEBUG, fmt.Sprint("[RedisLock] [Iterate] Failed while locking the key. Skip to next expired key. Error: ", lockError))
 	}
 }
 
@@ -142,13 +147,17 @@ func (j *redisJob) handleExpiredEntry(actualKey string) {
 	if lockError == nil {
 		result, err := j.cache.Rename(context.Background(), actualKey, expiredKey).Result()
 		if err != nil {
-			j.config.Logger.PrintLogs(util.ERROR, fmt.Sprintf("Failed to rename key [%v] to [%v]. Error: %v \n", actualKey, expiredKey, err))
+			if strings.HasPrefix(err.Error(), "ERR no such key") {
+				j.config.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("Failed to rename key [%v] to [%v]. Error: %v \n", actualKey, expiredKey, err))
+			} else {
+				j.config.Logger.PrintLogs(util.ERROR, fmt.Sprintf("Failed to rename key [%v] to [%v]. Error: %v \n", actualKey, expiredKey, err))
+			}
 		} else {
 			j.config.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("Renamed key [%v] to [%v]. Result: %v \n", actualKey, expiredKey, result))
 		}
 
 	} else {
-		j.config.Logger.PrintLogs(util.ERROR, fmt.Sprint("[RedisLock][handleExpiredEntry] Failed while locking the key. Skip to next expired key. Error: ", lockError))
+		j.config.Logger.PrintLogs(util.DEBUG, fmt.Sprint("[RedisLock] [handleExpiredEntry] Failed while locking the key. Skip to next expired key. Error: ", lockError))
 	}
 }
 
@@ -215,13 +224,13 @@ func getRedisScheduler(cache redis.UniversalClient, config *schema.CacheConf) (s
 			// infinite loop
 			// this listens in the background for messages.
 			for msg := range ch {
-				// // For debug
+				// TODO: For debug
 				// log.Printf("[%s] received Keyspace event. Channel: [%v], Payload: [%v] \n", name, msg.Channel, msg.Payload)
-				// ////////////////////
+				////////////////////
 				if strings.HasPrefix(msg.Payload, getRedisKeyPrefix(config.RedisConf)+KEY_PREFIX_SHADOW) {
 					// get the actual key from the shadow key
 					actualKey := strings.Replace(msg.Payload, KEY_PREFIX_SHADOW, "", 1)
-					scheduler.job.config.Logger.PrintLogs(util.ERROR, fmt.Sprintf("[%s] found shadow key: [%v], actual key: [%v]", name, msg.Payload, actualKey))
+					scheduler.job.config.Logger.PrintLogs(util.DEBUG, fmt.Sprintf("[%s] found shadow key: [%v], actual key: [%v]", name, msg.Payload, actualKey))
 					scheduler.expiredKeyChannel <- actualKey
 				}
 			}
