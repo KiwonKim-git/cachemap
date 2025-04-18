@@ -88,7 +88,11 @@ func (l *RedisLockPool) lock(actualKey string) (err error) {
 	if err == nil {
 		logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Locked: [%s], mutext : [%s]", actualKey, mu.Name()))
 	} else {
-		logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Lock - Error while lock key: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), err))
+		if strings.HasPrefix(err.Error(), "lock already taken") {
+			logger.PrintLogs(util.DEBUG, fmt.Sprintf("[RedisLock] Lock - Error while lock key: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), err))
+		} else {
+			logger.PrintLogs(util.ERROR, fmt.Sprintf("[RedisLock] Lock - Error while lock key: [%s], mutext : [%s], error : %v", actualKey, mu.Name(), err))
+		}
 	}
 	return err
 }
